@@ -10,7 +10,6 @@ use crate::error::Error;
 pub enum DatasetEventType {
     #[serde(rename = "DATASET_HARVESTED")]
     DatasetHarvested,
-    Unknown(String),
 }
 
 #[derive(Debug, Serialize, Deserialize)]
