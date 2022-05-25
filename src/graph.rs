@@ -14,8 +14,8 @@ pub struct Graph(oxigraph::store::Store);
 
 impl Graph {
     pub fn name_dataset_and_distribution_nodes<G: ToString>(graph: G) -> Result<String, Error> {
-        let measurement_graph = Graph::parse(graph)?;
-        let named = measurement_graph.replace_blank_datasets_and_distributions()?;
+        let dataset_graph = Graph::parse(graph)?;
+        let named = dataset_graph.replace_blank_datasets_and_distributions()?;
         named.to_string()
     }
 
