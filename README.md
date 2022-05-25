@@ -1,0 +1,1 @@
+# fdk-mqa-node-namer
