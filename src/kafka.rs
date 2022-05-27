@@ -98,7 +98,9 @@ async fn handle_message(
     output_topic: String,
 ) -> Result<(), Error> {
     if let Some(event) = parse_event(message, decoder).await? {
-        let response_event = handle_event(event).await?;
+        let response_event = tokio::task::spawn_blocking(|| handle_event(event))
+            .await
+            .map_err(|e| e.to_string())??;
         let encoded = encoder
             .encode_struct(
                 response_event,
@@ -115,7 +117,7 @@ async fn handle_message(
     Ok(())
 }
 
-async fn handle_event(mut event: DatasetEvent) -> Result<DatasetEvent, Error> {
+fn handle_event(mut event: DatasetEvent) -> Result<DatasetEvent, Error> {
     event.graph = Graph::name_dataset_and_distribution_nodes(event.graph)?;
     Ok(event)
 }
