@@ -124,8 +124,8 @@ mod tests {
         _:da0 <http://www.w3.org/ns/dcat#distribution> _:di0 .
         _:da0 <http://www.w3.org/ns/dcat#distribution> _:di1 .
         _:da0 <http://www.w3.org/ns/dcat#distribution> <http://foo.bar> .
-        _:di0 <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/ns/dcat#distribution> .
-        _:di1 <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/ns/dcat#distribution> .
+        _:di0 <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/ns/dcat#Distribution> .
+        _:di1 <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/ns/dcat#Distribution> .
         _:da0 <http://www.w3.org/ns/dqv#hasQualityMeasurement> _:a .
         _:di0 <http://www.w3.org/ns/dqv#hasQualityMeasurement> _:b .
         _:di0 <http://www.w3.org/ns/dqv#hasQualityMeasurement> _:c .
@@ -138,14 +138,14 @@ mod tests {
         let replaced = Graph::name_dataset_and_distribution_nodes(graph).unwrap();
 
         assert!(replaced.contains(&"<http://blank.dataset#0> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/ns/dcat#Dataset> ."));
-        assert!(replaced.contains(&"<http://blank.dataset#0> <http://www.w3.org/ns/dcat#distribution> <http://blank.distribution#1> ."));
         assert!(replaced.contains(&"<http://blank.dataset#0> <http://www.w3.org/ns/dcat#distribution> <http://blank.distribution#0> ."));
+        assert!(replaced.contains(&"<http://blank.dataset#0> <http://www.w3.org/ns/dcat#distribution> <http://blank.distribution#1> ."));
         assert!(replaced.contains(
             &"<http://blank.dataset#0> <http://www.w3.org/ns/dcat#distribution> <http://foo.bar> ."
         ));
 
-        assert!(replaced.contains(&"<http://blank.distribution#0> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/ns/dcat#distribution> ."));
-        assert!(replaced.contains(&"<http://blank.distribution#1> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/ns/dcat#distribution> ."));
+        assert!(replaced.contains(&"<http://blank.distribution#0> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/ns/dcat#Distribution> ."));
+        assert!(replaced.contains(&"<http://blank.distribution#1> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/ns/dcat#Distribution> ."));
 
         assert!(replaced.contains(
             &"<http://blank.dataset#0> <http://www.w3.org/ns/dqv#hasQualityMeasurement> _:"

@@ -6,7 +6,7 @@ use serde_derive::{Deserialize, Serialize};
 
 use crate::error::Error;
 
-#[derive(Eq, PartialEq, Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub enum DatasetEventType {
     #[serde(rename = "DATASET_HARVESTED")]
     DatasetHarvested,
