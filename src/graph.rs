@@ -13,6 +13,7 @@ use oxigraph::{
 pub struct Graph(oxigraph::store::Store);
 
 impl Graph {
+    /// Names all dataset and distribution nodes in a graph string.
     pub fn name_dataset_and_distribution_nodes<G: ToString>(graph: G) -> Result<String, Error> {
         let dataset_graph = Graph::parse(graph)?;
         let named = dataset_graph.replace_blank_datasets_and_distributions()?;
@@ -51,7 +52,7 @@ impl Graph {
             .collect()
     }
 
-    // Creates a mapping from blank to named node.
+    /// Creates a mapping from blank to named node.
     fn create_mapping(
         &self,
         nodes: Vec<BlankNode>,
@@ -64,7 +65,7 @@ impl Graph {
             .collect()
     }
 
-    // Creates a mapping that maps all blank dataset and distribution nodes to named nodes.
+    /// Creates a mapping that maps all blank dataset and distribution nodes to named nodes.
     fn blank_to_named_mapping(&self) -> Result<HashMap<BlankNode, NamedNode>, Error> {
         let dataset_nodes = self.blank_nodes(dcat::DATASET)?;
         let distribution_nodes = self.blank_nodes(dcat::DISTRIBUTION)?;
@@ -76,7 +77,7 @@ impl Graph {
         Ok(mapping)
     }
 
-    // Replaces all blank dataset and distribution nodes with named nodes.
+    /// Replaces all blank dataset and distribution nodes with named nodes.
     fn replace_blank_datasets_and_distributions(&self) -> Result<Self, Error> {
         let mapping = self.blank_to_named_mapping()?;
         let quads: Vec<Quad> = self
@@ -124,8 +125,8 @@ mod tests {
         _:da0 <http://www.w3.org/ns/dcat#distribution> _:di0 .
         _:da0 <http://www.w3.org/ns/dcat#distribution> _:di1 .
         _:da0 <http://www.w3.org/ns/dcat#distribution> <http://foo.bar> .
-        _:di0 <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/ns/dcat#distribution> .
-        _:di1 <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/ns/dcat#distribution> .
+        _:di0 <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/ns/dcat#Distribution> .
+        _:di1 <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/ns/dcat#Distribution> .
         _:da0 <http://www.w3.org/ns/dqv#hasQualityMeasurement> _:a .
         _:di0 <http://www.w3.org/ns/dqv#hasQualityMeasurement> _:b .
         _:di0 <http://www.w3.org/ns/dqv#hasQualityMeasurement> _:c .
@@ -138,14 +139,14 @@ mod tests {
         let replaced = Graph::name_dataset_and_distribution_nodes(graph).unwrap();
 
         assert!(replaced.contains(&"<http://blank.dataset#0> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/ns/dcat#Dataset> ."));
-        assert!(replaced.contains(&"<http://blank.dataset#0> <http://www.w3.org/ns/dcat#distribution> <http://blank.distribution#1> ."));
         assert!(replaced.contains(&"<http://blank.dataset#0> <http://www.w3.org/ns/dcat#distribution> <http://blank.distribution#0> ."));
+        assert!(replaced.contains(&"<http://blank.dataset#0> <http://www.w3.org/ns/dcat#distribution> <http://blank.distribution#1> ."));
         assert!(replaced.contains(
             &"<http://blank.dataset#0> <http://www.w3.org/ns/dcat#distribution> <http://foo.bar> ."
         ));
 
-        assert!(replaced.contains(&"<http://blank.distribution#0> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/ns/dcat#distribution> ."));
-        assert!(replaced.contains(&"<http://blank.distribution#1> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/ns/dcat#distribution> ."));
+        assert!(replaced.contains(&"<http://blank.distribution#0> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/ns/dcat#Distribution> ."));
+        assert!(replaced.contains(&"<http://blank.distribution#1> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/ns/dcat#Distribution> ."));
 
         assert!(replaced.contains(
             &"<http://blank.dataset#0> <http://www.w3.org/ns/dqv#hasQualityMeasurement> _:"
