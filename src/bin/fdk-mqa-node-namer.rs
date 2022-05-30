@@ -1,14 +1,11 @@
+extern crate fdk_mqa_node_namer;
+
 use std::{env, time::Duration};
 
 use futures::stream::{FuturesUnordered, StreamExt};
 use schema_registry_converter::async_impl::schema_registry::SrSettings;
-use schemas::setup_schemas;
 
-mod error;
-mod graph;
-mod kafka;
-mod schemas;
-mod vocab;
+use fdk_mqa_node_namer::{kafka, schemas::setup_schemas};
 
 #[tokio::main]
 async fn main() {
