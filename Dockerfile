@@ -3,8 +3,7 @@ FROM rust:latest AS builder
 WORKDIR /build
 
 RUN apt-get update && apt-get install -y \
-    clang \
-    cmake
+    clang
 
 COPY ./ ./
 RUN cargo build --release
