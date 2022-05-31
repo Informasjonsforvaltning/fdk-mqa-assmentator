@@ -103,5 +103,5 @@ async fn assert_transformation(input: &str, expected: &str) {
     let message = consumer.consume().await;
     let event = from_value::<DatasetEvent>(&message).unwrap();
 
-    assert_eq!(sorted_lines(&event.graph), sorted_lines(expected),);
+    assert_eq!(sorted_lines(&event.graph), sorted_lines(expected));
 }
