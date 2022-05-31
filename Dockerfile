@@ -2,7 +2,7 @@ FROM rust:latest AS builder
 
 WORKDIR /build
 
-RUN apt-get update && apt-get install -y \
+RUN apt-get update && apt-get install -y --no-install-recommends \
     clang
 
 COPY ./ ./
