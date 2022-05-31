@@ -86,7 +86,7 @@ async fn real_world_example() {
     ).await;
 }
 
-async fn assert_transformation(input: &str, output: &str) {
+async fn assert_transformation(input: &str, expected: &str) {
     let mut consumer = TestConsumer::new("mqa-dataset-events");
 
     let input_message = DatasetEvent {
@@ -103,5 +103,5 @@ async fn assert_transformation(input: &str, output: &str) {
     let message = consumer.consume().await;
     let event = from_value::<DatasetEvent>(&message).unwrap();
 
-    assert_eq!(sorted_lines(&event.graph), sorted_lines(output),);
+    assert_eq!(sorted_lines(&event.graph), sorted_lines(expected),);
 }
