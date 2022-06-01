@@ -75,14 +75,3 @@ services:
     depends_on:
       schema-registry:
         condition: service_healthy
-
-  fdk-mqa-node-mapper:
-    build: .
-    environment:
-      - SCHEMA_REGISTRY_URL=http://schema-registry:8081
-      - BROKER_URL=kafka:29092
-    depends_on:
-      schema-registry:
-        condition: service_healthy
-      kafka:
-        condition: service_healthy

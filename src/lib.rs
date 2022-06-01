@@ -1,4 +1,4 @@
-mod error;
+pub mod error;
 mod graph;
 pub mod kafka;
 pub mod schemas;
