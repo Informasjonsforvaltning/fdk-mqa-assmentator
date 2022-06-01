@@ -10,8 +10,6 @@ jobs:
   test:
     name: Run tests when merging to main
     uses: Informasjonsforvaltning/workflows/.github/workflows/test-rust.yaml@chore/hos/default-inputs
-    with:
-      repo: ${{ github.repository }}
     secrets:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -19,8 +17,6 @@ jobs:
     name: Build with reusable workflow when merging to main
     uses: Informasjonsforvaltning/workflows/.github/workflows/build-push.yaml@chore/hos/default-inputs
     with:
-      caller_sha: ${{ github.sha }}
-      repo: ${{ github.repository }}
       environment: prod
     secrets:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -31,9 +27,6 @@ jobs:
     needs: [test,build]
     uses: Informasjonsforvaltning/workflows/.github/workflows/deploy.yaml@chore/hos/default-inputs
     with:
-      caller_sha: ${{ github.sha }}
-      repo: ${{ github.repository }}
-      actor: ${{ github.actor }}
       environment: prod
       cluster: digdir-fdk-prod
     secrets:
@@ -46,9 +39,6 @@ jobs:
     needs: [deploy]
     uses: Informasjonsforvaltning/workflows/.github/workflows/deploy.yaml@chore/hos/default-inputs
     with:
-      caller_sha: ${{ github.sha }}
-      repo: ${{ github.repository }}
-      actor: ${{ github.actor }}
       environment: demo
       cluster: digdir-fdk-dev
     secrets:

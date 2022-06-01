@@ -11,8 +11,6 @@ jobs:
     name: Run tests when pull request is created
     if: github.event.pull_request.draft == false
     uses: Informasjonsforvaltning/workflows/.github/workflows/test-rust.yaml@chore/hos/default-inputs
-    with:
-      repo: ${{ github.repository }}
     secrets:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -21,8 +19,6 @@ jobs:
     if: github.event.pull_request.draft == false
     uses: Informasjonsforvaltning/workflows/.github/workflows/build-push.yaml@chore/hos/default-inputs
     with:
-      caller_sha: ${{ github.sha }}
-      repo: ${{ github.repository }}
       environment: staging
     secrets:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -34,9 +30,6 @@ jobs:
     needs: [test,build]
     uses: Informasjonsforvaltning/workflows/.github/workflows/deploy.yaml@chore/hos/default-inputs
     with:
-      caller_sha: ${{ github.sha }}
-      repo: ${{ github.repository }}
-      actor: ${{ github.actor }}
       environment: staging
       cluster: digdir-fdk-dev
     secrets:
