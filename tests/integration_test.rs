@@ -1,4 +1,3 @@
-use avro_rs::from_value;
 use fdk_mqa_node_namer::{
     kafka::{INPUT_TOPIC, OUTPUT_TOPIC},
     schemas::{DatasetEvent, DatasetEventType},
@@ -97,11 +96,13 @@ async fn assert_transformation(input: &str, expected: &str) {
         graph: input.to_string(),
     };
 
-    // Start node-namer
+    // Start async node-namer process
     let processor = process_single_message();
+
     // Create consumer on node-namer output topic, and read all current messages
     let mut consumer = TestConsumer::new(&OUTPUT_TOPIC);
     consumer.read_all().await;
+
     // Produce message to node-namer input topic
     TestProducer::new(&INPUT_TOPIC)
         .produce(&input_message, "no.fdk.dataset.DatasetEvent")
@@ -112,7 +113,7 @@ async fn assert_transformation(input: &str, expected: &str) {
 
     // Consume message produced by node-namer
     let message = consumer.recv().await;
-    let event = from_value::<DatasetEvent>(&message).unwrap();
+    let event = avro_rs::from_value::<DatasetEvent>(&message).unwrap();
 
     assert_eq!(sorted_lines(&event.graph), sorted_lines(expected));
 }
