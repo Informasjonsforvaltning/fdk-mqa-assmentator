@@ -63,6 +63,7 @@ services:
     healthcheck:
       test: [ "CMD", "curl", "-f", "http://localhost:8081" ]
       interval: 3s
+      retries: 10
 
   # Registers schemas once schema-registry is up.
   schema-registrer:

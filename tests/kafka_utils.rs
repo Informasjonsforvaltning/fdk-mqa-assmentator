@@ -4,9 +4,11 @@ use avro_rs::types::Value;
 use fdk_mqa_node_namer::{
     error::Error,
     kafka::{create_consumer, create_producer, handle_message, BROKERS},
+    schemas::setup_schemas,
 };
 use futures::StreamExt;
 use rdkafka::{
+    config::RDKafkaLogLevel,
     consumer::{Consumer, StreamConsumer},
     producer::{FutureProducer, FutureRecord},
     ClientConfig, Message,
@@ -21,10 +23,14 @@ use schema_registry_converter::{
 use serde::Serialize;
 
 pub async fn process_single_message() -> Result<(), Error> {
+    setup_schemas(&sr_settings()).await.unwrap();
+
     let producer = create_producer().unwrap();
     let consumer = create_consumer().unwrap();
-    let message = tokio::time::timeout(Duration::from_millis(3000), consumer.recv())
+    // Attempt to receive message for 3s before aborting with an error
+    let message = tokio::time::timeout(Duration::from_millis(3000), consumer.stream().next())
         .await
+        .unwrap()
         .unwrap()
         .unwrap()
         .detach();
@@ -88,6 +94,10 @@ impl TestConsumer<'_> {
         let consumer = ClientConfig::new()
             .set("group.id", "fdk-mqa-node-namer-test")
             .set("bootstrap.servers", BROKERS.clone())
+            .set("auto.offset.reset", "beginning")
+            .set("security.protocol", "plaintext")
+            .set("debug", "all")
+            .set_log_level(RDKafkaLogLevel::Debug)
             .create::<StreamConsumer>()
             .expect("Failed to create Kafka StreamConsumer");
 
@@ -105,6 +115,7 @@ impl TestConsumer<'_> {
     }
 
     pub async fn recv(&mut self) -> Value {
+        // Attempt to receive message for 3s before aborting with an error
         let msg = tokio::time::timeout(Duration::from_millis(3000), self.consumer.recv())
             .await
             .unwrap()

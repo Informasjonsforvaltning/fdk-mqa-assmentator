@@ -109,7 +109,7 @@ async fn assert_transformation(input: &str, expected: &str) {
         .await;
 
     // Wait for node-namer to process message and assert result is ok
-    assert!(processor.await.is_ok());
+    processor.await.unwrap();
 
     // Consume message produced by node-namer
     let message = consumer.recv().await;
