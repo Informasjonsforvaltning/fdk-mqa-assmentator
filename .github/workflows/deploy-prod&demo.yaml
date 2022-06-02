@@ -9,14 +9,15 @@ on:
 jobs:
   test:
     name: Run tests when merging to main
-    uses: Informasjonsforvaltning/workflows/.github/workflows/test-rust.yaml@chore/hos/default-inputs
+    uses: Informasjonsforvaltning/workflows/.github/workflows/test-rust.yaml@main
     secrets:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   build:
     name: Build with reusable workflow when merging to main
-    uses: Informasjonsforvaltning/workflows/.github/workflows/build-push.yaml@chore/hos/default-inputs
+    uses: Informasjonsforvaltning/workflows/.github/workflows/build-push.yaml@main
     with:
+      app_name: fdk-mqa-node-namer
       environment: prod
     secrets:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -25,8 +26,9 @@ jobs:
   deploy:
     name: Deploy to prod environment with reusable workflow when test and build is successful
     needs: [test,build]
-    uses: Informasjonsforvaltning/workflows/.github/workflows/deploy.yaml@chore/hos/default-inputs
+    uses: Informasjonsforvaltning/workflows/.github/workflows/deploy.yaml@main
     with:
+      app_name: fdk-mqa-node-namer
       environment: prod
       cluster: digdir-fdk-prod
     secrets:
@@ -37,8 +39,9 @@ jobs:
   deploy_demo:
     name: Deploy to demo environment with reusable workflow when prod deploy is successful
     needs: [deploy]
-    uses: Informasjonsforvaltning/workflows/.github/workflows/deploy.yaml@chore/hos/default-inputs
+    uses: Informasjonsforvaltning/workflows/.github/workflows/deploy.yaml@main
     with:
+      app_name: fdk-mqa-node-namer
       environment: demo
       cluster: digdir-fdk-dev
     secrets:
