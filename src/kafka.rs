@@ -1,10 +1,12 @@
-use std::time::Duration;
+use std::{env, time::Duration};
 
 use avro_rs::{from_value, schema::Name};
 use futures::TryStreamExt;
+use lazy_static::lazy_static;
 use rdkafka::{
     config::RDKafkaLogLevel,
     consumer::{Consumer, StreamConsumer},
+    error::KafkaError,
     message::OwnedMessage,
     producer::{FutureProducer, FutureRecord},
     ClientConfig, Message,
@@ -20,16 +22,27 @@ use schema_registry_converter::{
 
 use crate::{error::Error, graph::Graph, schemas::DatasetEvent};
 
-pub async fn run_async_processor(
-    brokers: String,
-    group_id: String,
-    input_topic: String,
-    output_topic: String,
-    sr_settings: SrSettings,
-) -> Result<(), Error> {
+lazy_static! {
+    pub static ref BROKERS: String = env::var("BROKERS").unwrap_or("localhost:9092".to_string());
+    pub static ref SCHEMA_REGISTRY: String =
+        env::var("SCHEMA_REGISTRY").unwrap_or("http://localhost:8081".to_string());
+    pub static ref INPUT_TOPIC: String =
+        env::var("INPUT_TOPIC").unwrap_or("dataset-events".to_string());
+    pub static ref OUTPUT_TOPIC: String =
+        env::var("OUTPUT_TOPIC").unwrap_or("mqa-dataset-events".to_string());
+}
+
+pub fn create_producer() -> Result<FutureProducer, KafkaError> {
+    ClientConfig::new()
+        .set("bootstrap.servers", BROKERS.clone())
+        .set("message.timeout.ms", "5000")
+        .create()
+}
+
+pub fn create_consumer() -> Result<StreamConsumer, KafkaError> {
     let consumer: StreamConsumer = ClientConfig::new()
-        .set("group.id", &group_id)
-        .set("bootstrap.servers", &brokers)
+        .set("group.id", "fdk-mqa-node-namer")
+        .set("bootstrap.servers", BROKERS.clone())
         .set("enable.partition.eof", "false")
         .set("session.timeout.ms", "6000")
         .set("enable.auto.commit", "true")
@@ -39,24 +52,23 @@ pub async fn run_async_processor(
         .set("debug", "all")
         .set_log_level(RDKafkaLogLevel::Debug)
         .create()?;
+    consumer.subscribe(&[&INPUT_TOPIC])?;
+    Ok(consumer)
+}
 
-    let producer: FutureProducer = ClientConfig::new()
-        .set("bootstrap.servers", &brokers)
-        .set("message.timeout.ms", "5000")
-        .create()?;
+pub async fn run_async_processor(sr_settings: SrSettings) -> Result<(), Error> {
+    let producer = create_producer()?;
+    let consumer = create_consumer()?;
 
-    consumer.subscribe(&[&input_topic])?;
     consumer
         .stream()
         .try_for_each(|borrowed_message| {
-            let decoder = AvroDecoder::new(sr_settings.clone());
-            let encoder = AvroEncoder::new(sr_settings.clone());
+            let sr_settings = sr_settings.clone();
             let producer = producer.clone();
-            let output_topic = output_topic.clone();
+            let message = borrowed_message.detach();
             async move {
-                let message = borrowed_message.detach();
                 tokio::spawn(async move {
-                    match handle_message(message, decoder, encoder, producer, output_topic).await {
+                    match handle_message(message, sr_settings, producer).await {
                         Ok(_) => println!("ok"),
                         Err(e) => println!("Error: {:?}", e),
                     };
@@ -90,25 +102,26 @@ async fn parse_event(
     }
 }
 
-async fn handle_message(
+pub async fn handle_message(
     message: OwnedMessage,
-    decoder: AvroDecoder<'_>,
-    mut encoder: AvroEncoder<'_>,
+    sr_settings: SrSettings,
     producer: FutureProducer,
-    output_topic: String,
 ) -> Result<(), Error> {
+    let decoder = AvroDecoder::new(sr_settings.clone());
     if let Some(event) = parse_event(message, decoder).await? {
         let response_event = tokio::task::spawn_blocking(|| handle_event(event))
             .await
             .map_err(|e| e.to_string())??;
-        let encoded = encoder
+
+        let encoded = AvroEncoder::new(sr_settings)
             .encode_struct(
                 response_event,
                 &SubjectNameStrategy::RecordNameStrategy("no.fdk.mqa.DatasetEvent".to_string()),
             )
             .await?;
+
         let record: FutureRecord<String, Vec<u8>> =
-            FutureRecord::to(&output_topic).payload(&encoded);
+            FutureRecord::to(&OUTPUT_TOPIC).payload(&encoded);
         producer
             .send(record, Duration::from_secs(0))
             .await

@@ -1,8 +1,14 @@
 use std::time::Duration;
 
 use avro_rs::types::Value;
+use fdk_mqa_node_namer::{
+    error::Error,
+    kafka::{create_consumer, create_producer, handle_message, BROKERS},
+    schemas::setup_schemas,
+};
 use futures::StreamExt;
 use rdkafka::{
+    config::RDKafkaLogLevel,
     consumer::{Consumer, StreamConsumer},
     producer::{FutureProducer, FutureRecord},
     ClientConfig, Message,
@@ -15,6 +21,22 @@ use schema_registry_converter::{
     schema_registry_common::SubjectNameStrategy,
 };
 use serde::Serialize;
+
+pub async fn process_single_message() -> Result<(), Error> {
+    setup_schemas(&sr_settings()).await.unwrap();
+
+    let producer = create_producer().unwrap();
+    let consumer = create_consumer().unwrap();
+    // Attempt to receive message for 3s before aborting with an error
+    let message = tokio::time::timeout(Duration::from_millis(3000), consumer.stream().next())
+        .await
+        .unwrap()
+        .unwrap()
+        .unwrap()
+        .detach();
+
+    handle_message(message, sr_settings(), producer).await
+}
 
 pub fn sr_settings() -> SrSettings {
     let schema_registry = "http://localhost:8081";
@@ -32,10 +54,8 @@ pub struct TestProducer<'a> {
 
 impl TestProducer<'_> {
     pub fn new(topic: &'static str) -> Self {
-        let bootstrap_servers = "localhost:9092";
         let producer = ClientConfig::new()
-            .set("bootstrap.servers", bootstrap_servers)
-            .set("message.timeout.ms", "5000")
+            .set("bootstrap.servers", BROKERS.clone())
             .create::<FutureProducer>()
             .expect("Failed to create Kafka FutureProducer");
 
@@ -71,16 +91,13 @@ pub struct TestConsumer<'a> {
 
 impl TestConsumer<'_> {
     pub fn new(topic: &'static str) -> Self {
-        let bootstrap_servers = "localhost:9092";
         let consumer = ClientConfig::new()
             .set("group.id", "fdk-mqa-node-namer-test")
-            .set("bootstrap.servers", bootstrap_servers)
-            .set("enable.partition.eof", "false")
-            .set("session.timeout.ms", "6000")
-            .set("enable.auto.commit", "true")
-            .set("api.version.request", "false")
+            .set("bootstrap.servers", BROKERS.clone())
+            .set("auto.offset.reset", "beginning")
             .set("security.protocol", "plaintext")
             .set("debug", "all")
+            .set_log_level(RDKafkaLogLevel::Debug)
             .create::<StreamConsumer>()
             .expect("Failed to create Kafka StreamConsumer");
 
@@ -92,10 +109,15 @@ impl TestConsumer<'_> {
         Self { consumer, decoder }
     }
 
-    pub async fn consume(&mut self) -> Value {
-        let msg = tokio::time::timeout(Duration::from_secs(10), self.consumer.stream().next())
+    pub async fn read_all(&mut self) {
+        let _ =
+            tokio::time::timeout(Duration::from_millis(100), self.consumer.stream().count()).await;
+    }
+
+    pub async fn recv(&mut self) -> Value {
+        // Attempt to receive message for 3s before aborting with an error
+        let msg = tokio::time::timeout(Duration::from_millis(3000), self.consumer.recv())
             .await
-            .expect("No messages to consume")
             .unwrap()
             .unwrap()
             .detach();

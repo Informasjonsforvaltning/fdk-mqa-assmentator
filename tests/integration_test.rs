@@ -1,6 +1,8 @@
-use avro_rs::from_value;
-use fdk_mqa_node_namer::schemas::{DatasetEvent, DatasetEventType};
-use kafka_utils::{TestConsumer, TestProducer};
+use fdk_mqa_node_namer::{
+    kafka::{INPUT_TOPIC, OUTPUT_TOPIC},
+    schemas::{DatasetEvent, DatasetEventType},
+};
+use kafka_utils::{process_single_message, TestConsumer, TestProducer};
 use utils::sorted_lines;
 
 mod kafka_utils;
@@ -87,8 +89,6 @@ async fn real_world_example() {
 }
 
 async fn assert_transformation(input: &str, expected: &str) {
-    let mut consumer = TestConsumer::new("mqa-dataset-events");
-
     let input_message = DatasetEvent {
         event_type: DatasetEventType::DatasetHarvested,
         timestamp: 1647698566000,
@@ -96,12 +96,24 @@ async fn assert_transformation(input: &str, expected: &str) {
         graph: input.to_string(),
     };
 
-    TestProducer::new("dataset-events")
+    // Start async node-namer process
+    let processor = process_single_message();
+
+    // Create consumer on node-namer output topic, and read all current messages
+    let mut consumer = TestConsumer::new(&OUTPUT_TOPIC);
+    consumer.read_all().await;
+
+    // Produce message to node-namer input topic
+    TestProducer::new(&INPUT_TOPIC)
         .produce(&input_message, "no.fdk.dataset.DatasetEvent")
         .await;
 
-    let message = consumer.consume().await;
-    let event = from_value::<DatasetEvent>(&message).unwrap();
+    // Wait for node-namer to process message and assert result is ok
+    processor.await.unwrap();
+
+    // Consume message produced by node-namer
+    let message = consumer.recv().await;
+    let event = avro_rs::from_value::<DatasetEvent>(&message).unwrap();
 
     assert_eq!(sorted_lines(&event.graph), sorted_lines(expected));
 }
