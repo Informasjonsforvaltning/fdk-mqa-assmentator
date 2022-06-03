@@ -40,6 +40,7 @@ services:
       - -c
       - (sh /kafka/create_topics.sh) & /etc/confluent/docker/run
     # Ready when custom topics are created.
+    # Make sure number at the end (after 'grep') matches desired topics.
     healthcheck:
       test:
         - CMD-SHELL
@@ -50,7 +51,7 @@ services:
     image: confluentinc/cp-schema-registry
     container_name: schema-registry
     ports:
-      - "8081:8081"
+      - 8081:8081
     depends_on:
       zookeeper:
         condition: service_healthy
