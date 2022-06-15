@@ -3,10 +3,11 @@ use schema_registry_converter::{
     schema_registry_common::{SchemaType, SuppliedSchema},
 };
 use serde_derive::{Deserialize, Serialize};
+use tracing::instrument;
 
 use crate::error::Error;
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum DatasetEventType {
     #[serde(rename = "DATASET_HARVESTED")]
     DatasetHarvested,
@@ -22,6 +23,7 @@ pub struct DatasetEvent {
     pub timestamp: i64,
 }
 
+#[instrument]
 pub async fn setup_schemas(sr_settings: &SrSettings) -> Result<u32, Error> {
     let schema = SuppliedSchema {
         name: Some("no.fdk.mqa.DatasetEvent".to_string()),
@@ -48,6 +50,7 @@ pub async fn setup_schemas(sr_settings: &SrSettings) -> Result<u32, Error> {
         references: vec![],
     };
 
+    tracing::info!("registering schema");
     let result = post_schema(sr_settings, "no.fdk.mqa.DatasetEvent".to_string(), schema).await?;
     Ok(result.id)
 }

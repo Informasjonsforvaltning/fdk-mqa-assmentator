@@ -19,6 +19,7 @@ use schema_registry_converter::{
     avro_common::DecodeResult,
     schema_registry_common::SubjectNameStrategy,
 };
+use tracing::{Instrument, Level};
 
 use crate::{error::Error, graph::Graph, schemas::DatasetEvent};
 
@@ -56,23 +57,43 @@ pub fn create_consumer() -> Result<StreamConsumer, KafkaError> {
     Ok(consumer)
 }
 
-pub async fn run_async_processor(sr_settings: SrSettings) -> Result<(), Error> {
+pub async fn run_async_processor(worker_id: usize, sr_settings: SrSettings) -> Result<(), Error> {
+    tracing::info!(worker_id, "starting worker");
+
     let producer = create_producer()?;
     let consumer = create_consumer()?;
 
+    tracing::info!(worker_id, "listening for messages");
     consumer
         .stream()
         .try_for_each(|borrowed_message| {
             let sr_settings = sr_settings.clone();
             let producer = producer.clone();
             let message = borrowed_message.detach();
+
+            let span = tracing::span!(
+                Level::INFO,
+                "received_message",
+                topic = message.topic(),
+                partition = message.partition(),
+                offset = message.offset(),
+                timestamp = message.timestamp().to_millis(),
+            );
+
             async move {
-                tokio::spawn(async move {
-                    match handle_message(message, sr_settings, producer).await {
-                        Ok(_) => println!("ok"),
-                        Err(e) => println!("Error: {:?}", e),
-                    };
-                });
+                tokio::spawn(
+                    async move {
+                        match handle_message(message, sr_settings, producer).await {
+                            Ok(_) => tracing::info!("message handeled successfully"),
+                            Err(e) => tracing::error!(
+                                error = e.to_string().as_str(),
+                                "failed while handling message"
+                            ),
+                        };
+                    }
+                    .instrument(span),
+                );
+
                 Ok(())
             }
         })
@@ -109,9 +130,19 @@ pub async fn handle_message(
 ) -> Result<(), Error> {
     let decoder = AvroDecoder::new(sr_settings.clone());
     if let Some(event) = parse_event(message, decoder).await? {
-        let response_event = tokio::task::spawn_blocking(|| handle_event(event))
-            .await
-            .map_err(|e| e.to_string())??;
+        let span = tracing::span!(
+            Level::INFO,
+            "parsed_event",
+            fdk_id = event.fdk_id.as_str(),
+            event_type = format!("{:?}", event.event_type).as_str(),
+        );
+
+        let response_event = tokio::task::spawn_blocking(move || {
+            let _enter = span.enter();
+            handle_event(event)
+        })
+        .await
+        .map_err(|e| e.to_string())??;
 
         let encoded = AvroEncoder::new(sr_settings)
             .encode_struct(
@@ -126,11 +157,14 @@ pub async fn handle_message(
             .send(record, Duration::from_secs(0))
             .await
             .map_err(|e| e.0)?;
+    } else {
+        tracing::info!("skipping event");
     }
     Ok(())
 }
 
 fn handle_event(mut event: DatasetEvent) -> Result<DatasetEvent, Error> {
+    tracing::info!("handling event");
     event.graph = Graph::name_dataset_and_distribution_nodes(event.graph)?;
     Ok(event)
 }
