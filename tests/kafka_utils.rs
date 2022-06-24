@@ -1,7 +1,7 @@
 use std::time::Duration;
 
 use avro_rs::types::Value;
-use fdk_mqa_node_namer::{
+use fdk_mqa_assmentator::{
     error::Error,
     kafka::{create_consumer, create_producer, handle_message, BROKERS},
     schemas::setup_schemas,

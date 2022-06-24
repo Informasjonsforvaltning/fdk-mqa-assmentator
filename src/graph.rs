@@ -1,23 +1,37 @@
-use std::{collections::HashMap, io::Cursor};
+use std::{env, io::Cursor};
 
 use crate::{
     error::Error,
-    vocab::{dcat, rdf_syntax},
+    vocab::{dcat, dcat_mqa, rdf_syntax},
 };
+use lazy_static::lazy_static;
 use oxigraph::{
     io::GraphFormat,
-    model::{BlankNode, GraphNameRef, NamedNode, NamedNodeRef, Quad, Subject, Term},
-    store::Store,
+    model::{GraphNameRef, NamedNode, NamedNodeRef, Quad, Subject},
+    store::{StorageError, Store},
 };
+use sha2::{
+    digest::{
+        consts::U16,
+        generic_array::{sequence::Split, GenericArray},
+    },
+    Digest, Sha256,
+};
+use uuid::Uuid;
+
+lazy_static! {
+    pub static ref MQA_URI_BASE: String =
+        env::var("MQA_URI_BASE").unwrap_or("http://localhost:8080".to_string());
+}
 
 pub struct Graph(oxigraph::store::Store);
 
 impl Graph {
     /// Names all dataset and distribution nodes in a graph string.
-    pub fn name_dataset_and_distribution_nodes<G: ToString>(graph: G) -> Result<String, Error> {
-        let dataset_graph = Graph::parse(graph)?;
-        let named = dataset_graph.replace_blank_datasets_and_distributions()?;
-        named.to_string()
+    pub fn process<G: ToString>(graph: G, dataset_id: Uuid) -> Result<String, Error> {
+        let graph = Graph::parse(graph)?;
+        graph.insert_assessment_of_properties(dataset_id)?;
+        graph.to_string()
     }
 
     /// Loads graph from string.
@@ -32,8 +46,8 @@ impl Graph {
         Ok(Graph(store))
     }
 
-    /// Retrieves all blank subjects of type.
-    fn blank_nodes(&self, subject_type: NamedNodeRef) -> Result<Vec<BlankNode>, Error> {
+    /// Retrieves all subjects of type.
+    fn subjects_of_type(&self, subject_type: NamedNodeRef) -> Result<Vec<NamedNode>, Error> {
         self.0
             .quads_for_pattern(
                 None,
@@ -41,67 +55,46 @@ impl Graph {
                 Some(subject_type.into()),
                 None,
             )
-            .filter_map(|result| match result {
-                Ok(Quad {
-                    subject: Subject::BlankNode(node),
-                    ..
-                }) => Some(Ok(node)),
-                Ok(_) => None,
-                Err(e) => Some(Err(e.into())),
-            })
+            .map(named_quad_subject)
             .collect()
     }
 
-    /// Creates a mapping from blank to named node.
-    fn create_mapping(
+    /// Inserts assessmentOf properties for dataset and distributions.
+    fn insert_assessment_of_properties(&self, dataset_id: Uuid) -> Result<(), Error> {
+        let datasets = self.subjects_of_type(dcat::DATASET_CLASS)?;
+        let dataset = datasets.first().ok_or("no dataset in graph")?;
+        let dataset_assessment = NamedNode::new(format!(
+            "{}/assessments/datasets/{}",
+            MQA_URI_BASE.clone(),
+            dataset_id.clone()
+        ))?;
+        self.insert_assessment_of_property(dataset.as_ref(), dataset_assessment)?;
+
+        for distribution in self.subjects_of_type(dcat::DISTRIBUTION_CLASS)? {
+            let distribution_assessment = NamedNode::new(format!(
+                "{}/assessments/distributions/{}",
+                MQA_URI_BASE.clone(),
+                uuid_from_str(distribution.as_str().to_string())
+            ))?;
+            self.insert_assessment_of_property(distribution.as_ref(), distribution_assessment)?;
+        }
+        Ok(())
+    }
+
+    /// Insert assessmentOf property on node.
+    fn insert_assessment_of_property(
         &self,
-        nodes: Vec<BlankNode>,
-        name_fn: fn(usize) -> String,
-    ) -> Result<HashMap<BlankNode, NamedNode>, Error> {
-        nodes
-            .into_iter()
-            .enumerate()
-            .map(|(i, n)| Ok((n, NamedNode::new(name_fn(i))?)))
-            .collect()
-    }
+        node: NamedNodeRef,
+        assessment: NamedNode,
+    ) -> Result<(), Error> {
+        self.0.insert(&Quad::new(
+            node,
+            dcat_mqa::HAS_ASSESSMENT,
+            assessment,
+            GraphNameRef::DefaultGraph,
+        ))?;
 
-    /// Creates a mapping that maps all blank dataset and distribution nodes to named nodes.
-    fn blank_to_named_mapping(&self) -> Result<HashMap<BlankNode, NamedNode>, Error> {
-        let dataset_nodes = self.blank_nodes(dcat::DATASET)?;
-        let distribution_nodes = self.blank_nodes(dcat::DISTRIBUTION)?;
-        let dataset_name_fn = |i| format!("http://blank.dataset#{}", i);
-        let distrubution_name_fn = |i| format!("http://blank.distribution#{}", i);
-
-        let mut mapping = self.create_mapping(dataset_nodes, dataset_name_fn)?;
-        mapping.extend(self.create_mapping(distribution_nodes, distrubution_name_fn)?);
-        Ok(mapping)
-    }
-
-    /// Replaces all blank dataset and distribution nodes with named nodes.
-    fn replace_blank_datasets_and_distributions(&self) -> Result<Self, Error> {
-        let mapping = self.blank_to_named_mapping()?;
-        let quads: Vec<Quad> = self
-            .0
-            .iter()
-            .map(|result| {
-                let mut quad = result?;
-                if let Subject::BlankNode(blank_node) = quad.subject.clone() {
-                    if let Some(named_node) = mapping.get(&blank_node) {
-                        quad.subject = Subject::NamedNode(named_node.clone());
-                    }
-                }
-                if let Term::BlankNode(blank_node) = quad.object.clone() {
-                    if let Some(named_node) = mapping.get(&blank_node) {
-                        quad.object = Term::NamedNode(named_node.clone());
-                    }
-                }
-                Ok(quad)
-            })
-            .collect::<Result<Vec<Quad>, Error>>()?;
-
-        let store = Store::new()?;
-        store.bulk_loader().load_quads(quads.into_iter())?;
-        Ok(Graph(store))
+        Ok(())
     }
 
     /// Dump graph to string.
@@ -114,48 +107,93 @@ impl Graph {
     }
 }
 
+/// Creates deterministic uuid from string hash.
+fn uuid_from_str(s: String) -> Uuid {
+    let mut hasher = Sha256::new();
+    hasher.update(s);
+    let hash = hasher.finalize();
+    let (head, _): (GenericArray<_, U16>, _) = Split::split(hash);
+    uuid::Uuid::from_u128(u128::from_le_bytes(*head.as_ref()))
+}
+
+// Attemts to extract quad subject as named node.
+fn named_quad_subject(result: Result<Quad, StorageError>) -> Result<NamedNode, Error> {
+    match result?.subject {
+        Subject::NamedNode(node) => Ok(node),
+        _ => Err("unable to get named quad subject".into()),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::Graph;
 
+    pub fn replace_blank(text: &str) -> String {
+        let mut chars = text.chars().collect::<Vec<char>>();
+        for i in (0..(chars.len() - 2)).rev() {
+            if chars[i] == '_' && chars[i + 1] == ':' {
+                while chars[i] != ' ' {
+                    chars.remove(i);
+                }
+                chars.insert(i, 'b')
+            }
+        }
+        chars.iter().collect::<String>()
+    }
+
+    pub fn sorted_lines(text: String) -> Vec<String> {
+        let mut lines: Vec<String> = text
+            .split("\n")
+            .map(|l| l.trim().to_string())
+            .filter(|l| l.len() > 0)
+            .collect();
+        lines.sort();
+        lines
+    }
+
     #[test]
     fn replace() {
         let graph = r#"
-        _:da0 <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/ns/dcat#Dataset> .
-        _:da0 <http://www.w3.org/ns/dcat#distribution> _:di0 .
-        _:da0 <http://www.w3.org/ns/dcat#distribution> _:di1 .
-        _:da0 <http://www.w3.org/ns/dcat#distribution> <http://foo.bar> .
-        _:di0 <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/ns/dcat#Distribution> .
-        _:di1 <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/ns/dcat#Distribution> .
-        _:da0 <http://www.w3.org/ns/dqv#hasQualityMeasurement> _:a .
-        _:di0 <http://www.w3.org/ns/dqv#hasQualityMeasurement> _:b .
-        _:di0 <http://www.w3.org/ns/dqv#hasQualityMeasurement> _:c .
-        _:di1 <http://www.w3.org/ns/dqv#hasQualityMeasurement> _:d .
+        <https://dataset.foo> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/ns/dcat#Dataset> .
+        <https://dataset.foo> <http://www.w3.org/ns/dcat#distribution> <https://distribution.foo> .
+        <https://dataset.foo> <http://www.w3.org/ns/dcat#distribution> <https://distribution.bar> .
+        <https://distribution.foo> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/ns/dcat#Distribution> .
+        <https://distribution.bar> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/ns/dcat#Distribution> .
+        <https://dataset.foo> <http://www.w3.org/ns/dqv#hasQualityMeasurement> _:a .
+        <https://distribution.foo> <http://www.w3.org/ns/dqv#hasQualityMeasurement> _:b .
+        <https://distribution.foo> <http://www.w3.org/ns/dqv#hasQualityMeasurement> _:c .
+        <https://distribution.bar> <http://www.w3.org/ns/dqv#hasQualityMeasurement> _:d .
         _:a <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/ns/dqv#QualityMeasurement> .
         _:b <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/ns/dqv#QualityMeasurement> .
         _:c <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/ns/dqv#QualityMeasurement> .
         _:d <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/ns/dqv#QualityMeasurement> .
         "#;
-        let replaced = Graph::name_dataset_and_distribution_nodes(graph).unwrap();
+        let uuid = uuid::Uuid::parse_str("0123bf37-5867-4c90-bc74-5a8c4e118572").unwrap();
+        let replaced = Graph::process(graph, uuid).unwrap();
 
-        assert!(replaced.contains(&"<http://blank.dataset#0> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/ns/dcat#Dataset> ."));
-        assert!(replaced.contains(&"<http://blank.dataset#0> <http://www.w3.org/ns/dcat#distribution> <http://blank.distribution#0> ."));
-        assert!(replaced.contains(&"<http://blank.dataset#0> <http://www.w3.org/ns/dcat#distribution> <http://blank.distribution#1> ."));
-        assert!(replaced.contains(
-            &"<http://blank.dataset#0> <http://www.w3.org/ns/dcat#distribution> <http://foo.bar> ."
-        ));
+        assert_eq!(
+            sorted_lines(replace_blank(&replaced)),
+            sorted_lines(replace_blank(
+                r#"
+                <https://dataset.foo> <https://data.norge.no/vocabulary/dcatno-mqa#hasAssessment> <http://localhost:8080/assessments/datasets/0123bf37-5867-4c90-bc74-5a8c4e118572> .
+                <https://distribution.foo> <https://data.norge.no/vocabulary/dcatno-mqa#hasAssessment> <http://localhost:8080/assessments/distributions/83f6bed5-11ed-413b-0f62-23c05b20009f> .
+                <https://distribution.bar> <https://data.norge.no/vocabulary/dcatno-mqa#hasAssessment> <http://localhost:8080/assessments/distributions/4107c895-36c0-edba-ed6d-34d9b72a95d8> .
 
-        assert!(replaced.contains(&"<http://blank.distribution#0> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/ns/dcat#Distribution> ."));
-        assert!(replaced.contains(&"<http://blank.distribution#1> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/ns/dcat#Distribution> ."));
-
-        assert!(replaced.contains(
-            &"<http://blank.dataset#0> <http://www.w3.org/ns/dqv#hasQualityMeasurement> _:"
-        ));
-        assert!(replaced.contains(
-            &"<http://blank.distribution#0> <http://www.w3.org/ns/dqv#hasQualityMeasurement> _:"
-        ));
-        assert!(replaced.contains(
-            &"<http://blank.distribution#1> <http://www.w3.org/ns/dqv#hasQualityMeasurement> _:"
-        ));
+                <https://dataset.foo> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/ns/dcat#Dataset> .
+                <https://dataset.foo> <http://www.w3.org/ns/dcat#distribution> <https://distribution.foo> .
+                <https://dataset.foo> <http://www.w3.org/ns/dcat#distribution> <https://distribution.bar> .
+                <https://distribution.foo> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/ns/dcat#Distribution> .
+                <https://distribution.bar> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/ns/dcat#Distribution> .
+                <https://dataset.foo> <http://www.w3.org/ns/dqv#hasQualityMeasurement> _:a .
+                <https://distribution.foo> <http://www.w3.org/ns/dqv#hasQualityMeasurement> _:b .
+                <https://distribution.foo> <http://www.w3.org/ns/dqv#hasQualityMeasurement> _:c .
+                <https://distribution.bar> <http://www.w3.org/ns/dqv#hasQualityMeasurement> _:d .
+                _:a <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/ns/dqv#QualityMeasurement> .
+                _:b <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/ns/dqv#QualityMeasurement> .
+                _:c <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/ns/dqv#QualityMeasurement> .
+                _:d <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/ns/dqv#QualityMeasurement> .
+                "#
+            ))
+        )
     }
 }
