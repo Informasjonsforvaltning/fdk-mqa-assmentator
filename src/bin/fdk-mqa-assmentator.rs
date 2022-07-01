@@ -1,11 +1,11 @@
-extern crate fdk_mqa_node_namer;
+extern crate fdk_mqa_assmentator;
 
 use std::time::Duration;
 
 use futures::stream::{FuturesUnordered, StreamExt};
 use schema_registry_converter::async_impl::schema_registry::SrSettings;
 
-use fdk_mqa_node_namer::{
+use fdk_mqa_assmentator::{
     kafka::{self, SCHEMA_REGISTRY},
     schemas::setup_schemas,
 };

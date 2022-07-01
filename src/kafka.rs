@@ -165,6 +165,7 @@ pub async fn handle_message(
 
 fn handle_event(mut event: DatasetEvent) -> Result<DatasetEvent, Error> {
     tracing::info!("handling event");
-    event.graph = Graph::name_dataset_and_distribution_nodes(event.graph)?;
+    let fdk_id = uuid::Uuid::parse_str(&event.fdk_id).map_err(|e| e.to_string())?;
+    event.graph = Graph::process(event.graph, fdk_id)?;
     Ok(event)
 }

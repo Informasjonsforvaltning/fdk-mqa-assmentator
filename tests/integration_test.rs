@@ -1,4 +1,4 @@
-use fdk_mqa_node_namer::{
+use fdk_mqa_assmentator::{
     kafka::{INPUT_TOPIC, OUTPUT_TOPIC},
     schemas::{DatasetEvent, DatasetEventType},
 };
@@ -11,89 +11,33 @@ mod utils;
 #[tokio::test]
 async fn named_dataset() {
     assert_transformation(
+        "8ba2dd54-e003-11ec-9d64-0242ac120002",
         r#"
-            @prefix dcat: <http://www.w3.org/ns/dcat#> .
-            @prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
-            <http://foo.bar> rdf:type dcat:Dataset ;
-            dcat:distribution [ rdf:type dcat:Distribution ] .
+            <https://dataset.foo> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/ns/dcat#Dataset> .
+            <https://dataset.foo> <http://www.w3.org/ns/dcat#distribution> <https://distribution.foo> .
+            <https://dataset.foo> <http://www.w3.org/ns/dcat#distribution> <https://distribution.bar> .
+            <https://distribution.foo> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/ns/dcat#Distribution> .
+            <https://distribution.bar> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/ns/dcat#Distribution> .
         "#,
         r#"
-            <http://foo.bar> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/ns/dcat#Dataset> .
-            <http://foo.bar> <http://www.w3.org/ns/dcat#distribution> <http://blank.distribution#0> .
-            <http://blank.distribution#0> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/ns/dcat#Distribution> .
+            <https://dataset.foo> <https://data.norge.no/vocabulary/dcatno-mqa#hasAssessment> <http://localhost:8080/assessments/datasets/8ba2dd54-e003-11ec-9d64-0242ac120002> .
+            <https://distribution.foo> <https://data.norge.no/vocabulary/dcatno-mqa#hasAssessment> <http://localhost:8080/assessments/distributions/83f6bed5-11ed-413b-0f62-23c05b20009f> .
+            <https://distribution.bar> <https://data.norge.no/vocabulary/dcatno-mqa#hasAssessment> <http://localhost:8080/assessments/distributions/4107c895-36c0-edba-ed6d-34d9b72a95d8> .
+
+            <https://dataset.foo> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/ns/dcat#Dataset> .
+            <https://dataset.foo> <http://www.w3.org/ns/dcat#distribution> <https://distribution.foo> .
+            <https://dataset.foo> <http://www.w3.org/ns/dcat#distribution> <https://distribution.bar> .
+            <https://distribution.foo> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/ns/dcat#Distribution> .
+            <https://distribution.bar> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/ns/dcat#Distribution> .
         "#,
     ).await;
 }
 
-#[tokio::test]
-async fn unnamed_dataset() {
-    assert_transformation(
-        r#"
-            @prefix dcat: <http://www.w3.org/ns/dcat#> .
-            @prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
-            _:00 rdf:type dcat:Dataset .
-            _:00 dcat:distribution _:01 .
-            _:01 rdf:type dcat:Distribution .
-        "#,
-        r#"
-            <http://blank.dataset#0> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/ns/dcat#Dataset> .
-            <http://blank.dataset#0> <http://www.w3.org/ns/dcat#distribution> <http://blank.distribution#0> .
-            <http://blank.distribution#0> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/ns/dcat#Distribution> .
-        "#,
-    ).await;
-}
-
-#[tokio::test]
-async fn inline_distribution() {
-    assert_transformation(
-        r#"
-            @prefix dcat: <http://www.w3.org/ns/dcat#> .
-            @prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
-            _:00 rdf:type dcat:Dataset ;
-            dcat:distribution [ rdf:type dcat:Distribution ] .
-        "#,
-        r#"
-            <http://blank.dataset#0> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/ns/dcat#Dataset> .
-            <http://blank.dataset#0> <http://www.w3.org/ns/dcat#distribution> <http://blank.distribution#0> .
-            <http://blank.distribution#0> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/ns/dcat#Distribution> .
-        "#,
-    ).await;
-}
-
-#[tokio::test]
-async fn real_world_example() {
-    assert_transformation(
-        r#"
-            @prefix dcat: <http://www.w3.org/ns/dcat#> .
-            @prefix dct: <http://purl.org/dc/terms/> .
-            @prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
-            _:00 rdf:type dcat:Dataset ;
-            dct:description "dataset desc"@nb ;
-            dcat:distribution [ rdf:type dcat:Distribution ;
-            dct:description "dist desc"@nb ;
-            dct:format <https://www.iana.org/assignments/media-types/application/vnd.openxmlformats-officedocument.spreadsheetml.sheet> , <https://www.iana.org/assignments/media-types/text/csv> ;
-            dct:license <http://data.norge.no/nlod/no/2.0> ;
-            dct:title "foo"@nb ] .
-        "#,
-        r#"
-            <http://blank.dataset#0> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/ns/dcat#Dataset> .
-            <http://blank.dataset#0> <http://purl.org/dc/terms/description> "dataset desc"@nb .
-            <http://blank.dataset#0> <http://www.w3.org/ns/dcat#distribution> <http://blank.distribution#0> .
-            <http://blank.distribution#0> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/ns/dcat#Distribution> .
-            <http://blank.distribution#0> <http://purl.org/dc/terms/title> "foo"@nb .
-            <http://blank.distribution#0> <http://purl.org/dc/terms/format> <https://www.iana.org/assignments/media-types/text/csv> .
-            <http://blank.distribution#0> <http://purl.org/dc/terms/format> <https://www.iana.org/assignments/media-types/application/vnd.openxmlformats-officedocument.spreadsheetml.sheet> .
-            <http://blank.distribution#0> <http://purl.org/dc/terms/description> "dist desc"@nb .
-            <http://blank.distribution#0> <http://purl.org/dc/terms/license> <http://data.norge.no/nlod/no/2.0> .
-        "#,
-    ).await;
-}
-
-async fn assert_transformation(input: &str, expected: &str) {
+async fn assert_transformation(fdk_id: &str, input: &str, expected: &str) {
     let input_message = DatasetEvent {
         event_type: DatasetEventType::DatasetHarvested,
         timestamp: 1647698566000,
-        fdk_id: "8ba2dd54-e003-11ec-9d64-0242ac120002".to_string(),
+        fdk_id: uuid::Uuid::parse_str(fdk_id).unwrap().to_string(),
         graph: input.to_string(),
     };
 

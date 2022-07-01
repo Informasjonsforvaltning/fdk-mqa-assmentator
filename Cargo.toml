@@ -1,5 +1,5 @@
 [package]
-name = "fdk-mqa-node-namer"
+name = "fdk-mqa-assmentator"
 version = "0.1.0"
 edition = "2021"
 
@@ -12,7 +12,9 @@ rdkafka = "0.28.0"
 schema_registry_converter = { version = "2.1.0", features = ["avro", "futures", "rustls_tls"], default-features=false }
 serde = "1.0.137"
 serde_derive = "1.0.137"
+sha2 = "0.10.2"
 thiserror = "1.0.31"
 tokio = { version = "1.18.2", features = ["full"] }
 tracing = "0.1"
 tracing-subscriber = "0.2"
+uuid = "1.1.2"

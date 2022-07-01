@@ -14,6 +14,6 @@ FROM rust:latest
 ENV TZ=Europe/Oslo
 RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
 
-COPY --from=builder /build/target/release/fdk-mqa-node-namer /fdk-mqa-url-checker
+COPY --from=builder /build/target/release/fdk-mqa-assmentator /fdk-mqa-assmentator
 
-CMD ["/fdk-mqa-url-checker"]
+CMD ["/fdk-mqa-assmentator"]
