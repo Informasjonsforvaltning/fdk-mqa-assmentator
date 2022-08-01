@@ -41,22 +41,22 @@ async fn assert_transformation(fdk_id: &str, input: &str, expected: &str) {
         graph: input.to_string(),
     };
 
-    // Start async node-namer process
+    // Start async assmentator process
     let processor = process_single_message();
 
-    // Create consumer on node-namer output topic, and read all current messages
+    // Create consumer on assmentator output topic, and read all current messages
     let mut consumer = TestConsumer::new(&OUTPUT_TOPIC);
     consumer.read_all().await;
 
-    // Produce message to node-namer input topic
+    // Produce message to assmentator input topic
     TestProducer::new(&INPUT_TOPIC)
         .produce(&input_message, "no.fdk.dataset.DatasetEvent")
         .await;
 
-    // Wait for node-namer to process message and assert result is ok
+    // Wait for assmentator to process message and assert result is ok
     processor.await.unwrap();
 
-    // Consume message produced by node-namer
+    // Consume message produced by assmentator
     let message = consumer.recv().await;
     let event = avro_rs::from_value::<DatasetEvent>(&message).unwrap();
 

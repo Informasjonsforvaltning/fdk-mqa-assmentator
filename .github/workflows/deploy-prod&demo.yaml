@@ -19,7 +19,7 @@ jobs:
     name: Build with reusable workflow when merging to main
     uses: Informasjonsforvaltning/workflows/.github/workflows/build-push.yaml@main
     with:
-      app_name: fdk-mqa-node-namer
+      app_name: fdk-mqa-assmentator
       environment: prod
     secrets:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -27,10 +27,10 @@ jobs:
 
   deploy:
     name: Deploy to prod environment with reusable workflow when test and build is successful
-    needs: [test,build]
+    needs: [test, build]
     uses: Informasjonsforvaltning/workflows/.github/workflows/deploy.yaml@main
     with:
-      app_name: fdk-mqa-node-namer
+      app_name: fdk-mqa-assmentator
       environment: prod
       cluster: digdir-fdk-prod
     secrets:
@@ -43,7 +43,7 @@ jobs:
     needs: [deploy]
     uses: Informasjonsforvaltning/workflows/.github/workflows/deploy.yaml@main
     with:
-      app_name: fdk-mqa-node-namer
+      app_name: fdk-mqa-assmentator
       environment: demo
       cluster: digdir-fdk-dev
     secrets:

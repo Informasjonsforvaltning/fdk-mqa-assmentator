@@ -92,7 +92,7 @@ pub struct TestConsumer<'a> {
 impl TestConsumer<'_> {
     pub fn new(topic: &'static str) -> Self {
         let consumer = ClientConfig::new()
-            .set("group.id", "fdk-mqa-node-namer-test")
+            .set("group.id", "fdk-mqa-assmentator-test")
             .set("bootstrap.servers", BROKERS.clone())
             .set("auto.offset.reset", "beginning")
             .set("security.protocol", "plaintext")

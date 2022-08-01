@@ -42,7 +42,7 @@ pub fn create_producer() -> Result<FutureProducer, KafkaError> {
 
 pub fn create_consumer() -> Result<StreamConsumer, KafkaError> {
     let consumer: StreamConsumer = ClientConfig::new()
-        .set("group.id", "fdk-mqa-node-namer")
+        .set("group.id", "fdk-mqa-assmentator")
         .set("bootstrap.servers", BROKERS.clone())
         .set("enable.partition.eof", "false")
         .set("session.timeout.ms", "6000")

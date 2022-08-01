@@ -21,7 +21,7 @@ jobs:
     if: github.event.pull_request.draft == false
     uses: Informasjonsforvaltning/workflows/.github/workflows/build-push.yaml@main
     with:
-      app_name: fdk-mqa-node-namer
+      app_name: fdk-mqa-assmentator
       environment: staging
     secrets:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -30,10 +30,10 @@ jobs:
   deploy:
     name: Deploy to staging environment with reusable workflow when test and build is successful
     if: github.event.pull_request.draft == false
-    needs: [test,build]
+    needs: [test, build]
     uses: Informasjonsforvaltning/workflows/.github/workflows/deploy.yaml@main
     with:
-      app_name: fdk-mqa-node-namer
+      app_name: fdk-mqa-assmentator
       environment: staging
       cluster: digdir-fdk-dev
     secrets:
