@@ -61,6 +61,8 @@ pub async fn run_async_processor(worker_id: usize, sr_settings: SrSettings) -> R
 
     let producer = create_producer()?;
     let consumer = create_consumer()?;
+    let mut encoder = AvroEncoder::new(sr_settings.clone());
+    let mut decoder = AvroDecoder::new(sr_settings);
 
     tracing::info!(worker_id, "listening for messages");
     loop {
@@ -74,7 +76,7 @@ pub async fn run_async_processor(worker_id: usize, sr_settings: SrSettings) -> R
             timestamp = message.timestamp().to_millis(),
         );
 
-        receive_message(&consumer, &producer, sr_settings.clone(), &message)
+        receive_message(&consumer, &producer, &mut decoder, &mut encoder, &message)
             .instrument(span)
             .await;
     }
@@ -83,10 +85,11 @@ pub async fn run_async_processor(worker_id: usize, sr_settings: SrSettings) -> R
 async fn receive_message(
     consumer: &StreamConsumer,
     producer: &FutureProducer,
-    sr_settings: SrSettings,
+    decoder: &mut AvroDecoder<'_>,
+    encoder: &mut AvroEncoder<'_>,
     message: &BorrowedMessage<'_>,
 ) {
-    match handle_message(producer, sr_settings, message).await {
+    match handle_message(producer, decoder, encoder, message).await {
         Ok(_) => {
             tracing::info!("message handled successfully");
         }
@@ -102,10 +105,10 @@ async fn receive_message(
 
 pub async fn handle_message(
     producer: &FutureProducer,
-    sr_settings: SrSettings,
+    decoder: &mut AvroDecoder<'_>,
+    encoder: &mut AvroEncoder<'_>,
     message: &BorrowedMessage<'_>,
 ) -> Result<(), Error> {
-    let decoder = AvroDecoder::new(sr_settings.clone());
     if let Some(event) = decode_message(message, decoder).await? {
         let span = tracing::span!(
             Level::INFO,
@@ -121,7 +124,7 @@ pub async fn handle_message(
         .await
         .map_err(|e| e.to_string())??;
 
-        let encoded = AvroEncoder::new(sr_settings)
+        let encoded = encoder
             .encode_struct(
                 response_event,
                 &SubjectNameStrategy::RecordNameStrategy("no.fdk.mqa.DatasetEvent".to_string()),
@@ -142,7 +145,7 @@ pub async fn handle_message(
 
 async fn decode_message(
     message: &BorrowedMessage<'_>,
-    mut decoder: AvroDecoder<'_>,
+    decoder: &mut AvroDecoder<'_>,
 ) -> Result<Option<DatasetEvent>, Error> {
     match decoder.decode(message.payload()).await {
         Ok(DecodeResult {

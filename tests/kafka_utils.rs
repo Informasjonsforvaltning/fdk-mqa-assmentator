@@ -27,6 +27,9 @@ pub async fn process_single_message() -> Result<(), Error> {
 
     let producer = create_producer().unwrap();
     let consumer = create_consumer().unwrap();
+    let mut encoder = AvroEncoder::new(sr_settings());
+    let mut decoder = AvroDecoder::new(sr_settings());
+
     // Attempt to receive message for 3s before aborting with an error
     let message = tokio::time::timeout(Duration::from_millis(3000), consumer.stream().next())
         .await
@@ -34,7 +37,7 @@ pub async fn process_single_message() -> Result<(), Error> {
         .unwrap()
         .unwrap();
 
-    handle_message(&producer, sr_settings(), &message).await
+    handle_message(&producer, &mut decoder, &mut encoder, &message).await
 }
 
 pub fn sr_settings() -> SrSettings {
