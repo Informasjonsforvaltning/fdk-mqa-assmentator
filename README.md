@@ -1,1 +1,1 @@
-# fdk-mqa-node-namer
+# fdk-mqa-assmentator
