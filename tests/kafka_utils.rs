@@ -32,10 +32,9 @@ pub async fn process_single_message() -> Result<(), Error> {
         .await
         .unwrap()
         .unwrap()
-        .unwrap()
-        .detach();
+        .unwrap();
 
-    handle_message(message, sr_settings(), producer).await
+    handle_message(&producer, sr_settings(), &message).await
 }
 
 pub fn sr_settings() -> SrSettings {

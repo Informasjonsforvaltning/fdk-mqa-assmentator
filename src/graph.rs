@@ -27,7 +27,7 @@ lazy_static! {
 pub struct Graph(oxigraph::store::Store);
 
 impl Graph {
-    /// Names all dataset and distribution nodes in a graph string.
+    /// Inserts assessmentOf properties into graph.
     pub fn process<G: ToString>(graph: G, dataset_id: Uuid) -> Result<String, Error> {
         let graph = Graph::parse(graph)?;
         graph.insert_assessment_of_properties(dataset_id)?;

@@ -1,13 +1,12 @@
 use std::{env, time::Duration};
 
 use avro_rs::{from_value, schema::Name};
-use futures::TryStreamExt;
 use lazy_static::lazy_static;
 use rdkafka::{
     config::RDKafkaLogLevel,
     consumer::{Consumer, StreamConsumer},
     error::KafkaError,
-    message::OwnedMessage,
+    message::BorrowedMessage,
     producer::{FutureProducer, FutureRecord},
     ClientConfig, Message,
 };
@@ -64,75 +63,53 @@ pub async fn run_async_processor(worker_id: usize, sr_settings: SrSettings) -> R
     let consumer = create_consumer()?;
 
     tracing::info!(worker_id, "listening for messages");
-    consumer
-        .stream()
-        .try_for_each(|borrowed_message| {
-            let sr_settings = sr_settings.clone();
-            let producer = producer.clone();
-            let message = borrowed_message.detach();
+    loop {
+        let message = consumer.recv().await?;
+        let span = tracing::span!(
+            Level::INFO,
+            "message",
+            topic = message.topic(),
+            partition = message.partition(),
+            offset = message.offset(),
+            timestamp = message.timestamp().to_millis(),
+        );
 
-            let span = tracing::span!(
-                Level::INFO,
-                "received_message",
-                topic = message.topic(),
-                partition = message.partition(),
-                offset = message.offset(),
-                timestamp = message.timestamp().to_millis(),
-            );
-
-            async move {
-                tokio::spawn(
-                    async move {
-                        match handle_message(message, sr_settings, producer).await {
-                            Ok(_) => tracing::info!("message handeled successfully"),
-                            Err(e) => tracing::error!(
-                                error = e.to_string().as_str(),
-                                "failed while handling message"
-                            ),
-                        };
-                    }
-                    .instrument(span),
-                );
-
-                Ok(())
-            }
-        })
-        .await?;
-
-    Ok(())
-}
-
-async fn parse_event(
-    msg: OwnedMessage,
-    mut decoder: AvroDecoder<'_>,
-) -> Result<Option<DatasetEvent>, Error> {
-    match decoder.decode(msg.payload()).await {
-        Ok(DecodeResult {
-            name:
-                Some(Name {
-                    name,
-                    namespace: Some(namespace),
-                    ..
-                }),
-            value,
-        }) if name == "DatasetEvent" && namespace == "no.fdk.dataset" => Ok(Some(
-            from_value::<DatasetEvent>(&value).map_err(|e| e.to_string())?,
-        )),
-        Ok(_) => Ok(None),
-        Err(e) => Err(e.into()),
+        receive_message(&consumer, &producer, sr_settings.clone(), &message)
+            .instrument(span)
+            .await;
     }
 }
 
-pub async fn handle_message(
-    message: OwnedMessage,
+async fn receive_message(
+    consumer: &StreamConsumer,
+    producer: &FutureProducer,
     sr_settings: SrSettings,
-    producer: FutureProducer,
+    message: &BorrowedMessage<'_>,
+) {
+    match handle_message(producer, sr_settings, message).await {
+        Ok(_) => {
+            tracing::info!("message handled successfully");
+        }
+        Err(e) => tracing::error!(
+            error = e.to_string().as_str(),
+            "failed while handling message"
+        ),
+    };
+    if let Err(e) = consumer.store_offset_from_message(&message) {
+        tracing::warn!(error = e.to_string().as_str(), "failed to store offset");
+    };
+}
+
+pub async fn handle_message(
+    producer: &FutureProducer,
+    sr_settings: SrSettings,
+    message: &BorrowedMessage<'_>,
 ) -> Result<(), Error> {
     let decoder = AvroDecoder::new(sr_settings.clone());
-    if let Some(event) = parse_event(message, decoder).await? {
+    if let Some(event) = decode_message(message, decoder).await? {
         let span = tracing::span!(
             Level::INFO,
-            "parsed_event",
+            "event",
             fdk_id = event.fdk_id.as_str(),
             event_type = format!("{:?}", event.event_type).as_str(),
         );
@@ -161,6 +138,27 @@ pub async fn handle_message(
         tracing::info!("skipping event");
     }
     Ok(())
+}
+
+async fn decode_message(
+    message: &BorrowedMessage<'_>,
+    mut decoder: AvroDecoder<'_>,
+) -> Result<Option<DatasetEvent>, Error> {
+    match decoder.decode(message.payload()).await {
+        Ok(DecodeResult {
+            name:
+                Some(Name {
+                    name,
+                    namespace: Some(namespace),
+                    ..
+                }),
+            value,
+        }) if name == "DatasetEvent" && namespace == "no.fdk.dataset" => Ok(Some(
+            from_value::<DatasetEvent>(&value).map_err(|e| e.to_string())?,
+        )),
+        Ok(_) => Ok(None),
+        Err(e) => Err(e.into()),
+    }
 }
 
 fn handle_event(mut event: DatasetEvent) -> Result<DatasetEvent, Error> {
