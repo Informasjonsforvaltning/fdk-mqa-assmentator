@@ -1,12 +1,12 @@
 extern crate fdk_mqa_assmentator;
 
-use std::time::Duration;
-
 use futures::stream::{FuturesUnordered, StreamExt};
-use schema_registry_converter::async_impl::schema_registry::SrSettings;
 
 use fdk_mqa_assmentator::{
-    kafka::{self, SCHEMA_REGISTRY},
+    kafka::{
+        create_sr_settings, run_async_processor, BROKERS, INPUT_TOPIC, OUTPUT_TOPIC,
+        SCHEMA_REGISTRY,
+    },
     schemas::setup_schemas,
 };
 
@@ -19,43 +19,35 @@ async fn main() {
         .with_current_span(false)
         .init();
 
-    let mut schema_registry_urls = SCHEMA_REGISTRY.split(",");
-    let mut sr_settings_builder =
-        SrSettings::new_builder(schema_registry_urls.next().unwrap_or_default().to_string());
-    schema_registry_urls.for_each(|url| {
-        sr_settings_builder.add_url(url.to_string());
+    tracing::info!(
+        brokers = BROKERS.to_string(),
+        schema_registry = SCHEMA_REGISTRY.to_string(),
+        input_topic = INPUT_TOPIC.to_string(),
+        output_topic = OUTPUT_TOPIC.to_string(),
+        "starting service"
+    );
+
+    let sr_settings = create_sr_settings().unwrap_or_else(|e| {
+        tracing::error!(error = e.to_string(), "sr settings creation error");
+        std::process::exit(1);
     });
 
-    let sr_settings = sr_settings_builder
-        .set_timeout(Duration::from_secs(5))
-        .build()
-        .unwrap_or_else(|e| {
-            tracing::error!(
-                error = e.to_string().as_str(),
-                "unable to create SrSettings"
-            );
-            std::process::exit(1);
-        });
-
     setup_schemas(&sr_settings).await.unwrap_or_else(|e| {
-        tracing::error!(error = e.to_string().as_str(), "unable to register schemas");
+        tracing::error!(error = e.to_string(), "schema registration error");
         std::process::exit(1);
     });
 
     (0..4)
-        .map(|i| tokio::spawn(kafka::run_async_processor(i, sr_settings.clone())))
+        .map(|i| tokio::spawn(run_async_processor(i, sr_settings.clone())))
         .collect::<FuturesUnordered<_>>()
         .for_each(|result| async {
             result
                 .unwrap_or_else(|e| {
-                    tracing::error!(
-                        error = e.to_string().as_str(),
-                        "unable to run worker thread"
-                    );
+                    tracing::error!(error = e.to_string(), "unable to run worker thread");
                     std::process::exit(1);
                 })
                 .unwrap_or_else(|e| {
-                    tracing::error!(error = e.to_string().as_str(), "worker failed");
+                    tracing::error!(error = e.to_string(), "worker failed");
                     std::process::exit(1);
                 });
         })

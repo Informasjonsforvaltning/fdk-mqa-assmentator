@@ -27,10 +27,10 @@ lazy_static! {
 pub struct Graph(oxigraph::store::Store);
 
 impl Graph {
-    /// Inserts assessmentOf properties into graph.
+    /// Inserts hasAssessment properties into graph.
     pub fn process<G: ToString>(graph: G, dataset_id: Uuid) -> Result<String, Error> {
         let graph = Graph::parse(graph)?;
-        graph.insert_assessment_of_properties(dataset_id)?;
+        graph.insert_has_assessment_properties(dataset_id)?;
         graph.to_string()
     }
 
@@ -59,8 +59,8 @@ impl Graph {
             .collect()
     }
 
-    /// Inserts assessmentOf properties for dataset and distributions.
-    fn insert_assessment_of_properties(&self, dataset_id: Uuid) -> Result<(), Error> {
+    /// Inserts hasAssessment properties for dataset and distributions.
+    fn insert_has_assessment_properties(&self, dataset_id: Uuid) -> Result<(), Error> {
         let datasets = self.subjects_of_type(dcat::DATASET_CLASS)?;
         let dataset = datasets.first().ok_or("no dataset in graph")?;
         let dataset_assessment = NamedNode::new(format!(
@@ -68,7 +68,7 @@ impl Graph {
             MQA_URI_BASE.clone(),
             dataset_id.clone()
         ))?;
-        self.insert_assessment_of_property(dataset.as_ref(), dataset_assessment)?;
+        self.insert_has_assessment_property(dataset.as_ref(), dataset_assessment)?;
 
         for distribution in self.subjects_of_type(dcat::DISTRIBUTION_CLASS)? {
             let distribution_assessment = NamedNode::new(format!(
@@ -76,13 +76,13 @@ impl Graph {
                 MQA_URI_BASE.clone(),
                 uuid_from_str(distribution.as_str().to_string())
             ))?;
-            self.insert_assessment_of_property(distribution.as_ref(), distribution_assessment)?;
+            self.insert_has_assessment_property(distribution.as_ref(), distribution_assessment)?;
         }
         Ok(())
     }
 
-    /// Insert assessmentOf property on node.
-    fn insert_assessment_of_property(
+    /// Insert hasAssessment property on node.
+    fn insert_has_assessment_property(
         &self,
         node: NamedNodeRef,
         assessment: NamedNode,

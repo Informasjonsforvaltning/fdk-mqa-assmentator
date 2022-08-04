@@ -3,7 +3,7 @@ use std::time::Duration;
 use avro_rs::types::Value;
 use fdk_mqa_assmentator::{
     error::Error,
-    kafka::{create_consumer, create_producer, handle_message, BROKERS},
+    kafka::{create_consumer, create_producer, create_sr_settings, handle_message, BROKERS},
     schemas::setup_schemas,
 };
 use futures::StreamExt;
@@ -14,21 +14,18 @@ use rdkafka::{
     ClientConfig, Message,
 };
 use schema_registry_converter::{
-    async_impl::{
-        avro::{AvroDecoder, AvroEncoder},
-        schema_registry::SrSettings,
-    },
+    async_impl::avro::{AvroDecoder, AvroEncoder},
     schema_registry_common::SubjectNameStrategy,
 };
 use serde::Serialize;
 
 pub async fn process_single_message() -> Result<(), Error> {
-    setup_schemas(&sr_settings()).await.unwrap();
+    setup_schemas(&create_sr_settings().unwrap()).await.unwrap();
 
     let producer = create_producer().unwrap();
     let consumer = create_consumer().unwrap();
-    let mut encoder = AvroEncoder::new(sr_settings());
-    let mut decoder = AvroDecoder::new(sr_settings());
+    let mut encoder = AvroEncoder::new(create_sr_settings().unwrap());
+    let mut decoder = AvroDecoder::new(create_sr_settings().unwrap());
 
     // Attempt to receive message for 3s before aborting with an error
     let message = tokio::time::timeout(Duration::from_millis(3000), consumer.stream().next())
@@ -38,14 +35,6 @@ pub async fn process_single_message() -> Result<(), Error> {
         .unwrap();
 
     handle_message(&producer, &mut decoder, &mut encoder, &message).await
-}
-
-pub fn sr_settings() -> SrSettings {
-    let schema_registry = "http://localhost:8081";
-    SrSettings::new_builder(schema_registry.to_string())
-        .set_timeout(Duration::from_secs(5))
-        .build()
-        .unwrap()
 }
 
 pub struct TestProducer<'a> {
@@ -61,7 +50,7 @@ impl TestProducer<'_> {
             .create::<FutureProducer>()
             .expect("Failed to create Kafka FutureProducer");
 
-        let encoder = AvroEncoder::new(sr_settings());
+        let encoder = AvroEncoder::new(create_sr_settings().unwrap());
         Self {
             producer,
             encoder,
@@ -107,7 +96,7 @@ impl TestConsumer<'_> {
             .subscribe(&[topic])
             .expect("Failed to subscribe to topic");
 
-        let decoder = AvroDecoder::new(sr_settings());
+        let decoder = AvroDecoder::new(create_sr_settings().unwrap());
         Self { consumer, decoder }
     }
 
