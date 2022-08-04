@@ -1,6 +1,6 @@
 use std::{env, time::Duration};
 
-use avro_rs::{from_value, schema::Name};
+use avro_rs::schema::Name;
 use lazy_static::lazy_static;
 use rdkafka::{
     config::RDKafkaLogLevel,
@@ -20,7 +20,11 @@ use schema_registry_converter::{
 };
 use tracing::{Instrument, Level};
 
-use crate::{error::Error, graph::Graph, schemas::DatasetEvent};
+use crate::{
+    error::Error,
+    graph::Graph,
+    schemas::{DatasetEvent, DatasetEventType, InputEvent, MqaDatasetEvent, MqaDatasetEventType},
+};
 
 lazy_static! {
     pub static ref BROKERS: String = env::var("BROKERS").unwrap_or("localhost:9092".to_string());
@@ -32,11 +36,19 @@ lazy_static! {
         env::var("OUTPUT_TOPIC").unwrap_or("mqa-dataset-events".to_string());
 }
 
-pub fn create_producer() -> Result<FutureProducer, KafkaError> {
-    ClientConfig::new()
-        .set("bootstrap.servers", BROKERS.clone())
-        .set("message.timeout.ms", "5000")
-        .create()
+pub fn create_sr_settings() -> Result<SrSettings, Error> {
+    let mut schema_registry_urls = SCHEMA_REGISTRY.split(",");
+
+    let mut sr_settings_builder =
+        SrSettings::new_builder(schema_registry_urls.next().unwrap_or_default().to_string());
+    schema_registry_urls.for_each(|url| {
+        sr_settings_builder.add_url(url.to_string());
+    });
+
+    let sr_settings = sr_settings_builder
+        .set_timeout(Duration::from_secs(5))
+        .build()?;
+    Ok(sr_settings)
 }
 
 pub fn create_consumer() -> Result<StreamConsumer, KafkaError> {
@@ -46,6 +58,7 @@ pub fn create_consumer() -> Result<StreamConsumer, KafkaError> {
         .set("enable.partition.eof", "false")
         .set("session.timeout.ms", "6000")
         .set("enable.auto.commit", "true")
+        .set("enable.auto.offset.store", "false")
         .set("auto.offset.reset", "beginning")
         .set("api.version.request", "false")
         .set("security.protocol", "plaintext")
@@ -56,11 +69,18 @@ pub fn create_consumer() -> Result<StreamConsumer, KafkaError> {
     Ok(consumer)
 }
 
+pub fn create_producer() -> Result<FutureProducer, KafkaError> {
+    ClientConfig::new()
+        .set("bootstrap.servers", BROKERS.clone())
+        .set("message.timeout.ms", "5000")
+        .create()
+}
+
 pub async fn run_async_processor(worker_id: usize, sr_settings: SrSettings) -> Result<(), Error> {
     tracing::info!(worker_id, "starting worker");
 
-    let producer = create_producer()?;
     let consumer = create_consumer()?;
+    let producer = create_producer()?;
     let mut encoder = AvroEncoder::new(sr_settings.clone());
     let mut decoder = AvroDecoder::new(sr_settings);
 
@@ -70,8 +90,8 @@ pub async fn run_async_processor(worker_id: usize, sr_settings: SrSettings) -> R
         let span = tracing::span!(
             Level::INFO,
             "message",
-            topic = message.topic(),
-            partition = message.partition(),
+            // topic = message.topic(),
+            // partition = message.partition(),
             offset = message.offset(),
             timestamp = message.timestamp().to_millis(),
         );
@@ -90,16 +110,11 @@ async fn receive_message(
     message: &BorrowedMessage<'_>,
 ) {
     match handle_message(producer, decoder, encoder, message).await {
-        Ok(_) => {
-            tracing::info!("message handled successfully");
-        }
-        Err(e) => tracing::error!(
-            error = e.to_string().as_str(),
-            "failed while handling message"
-        ),
+        Ok(_) => tracing::info!("message handled successfully"),
+        Err(e) => tracing::error!(error = e.to_string(), "failed while handling message"),
     };
     if let Err(e) = consumer.store_offset_from_message(&message) {
-        tracing::warn!(error = e.to_string().as_str(), "failed to store offset");
+        tracing::warn!(error = e.to_string(), "failed to store offset");
     };
 }
 
@@ -109,46 +124,48 @@ pub async fn handle_message(
     encoder: &mut AvroEncoder<'_>,
     message: &BorrowedMessage<'_>,
 ) -> Result<(), Error> {
-    if let Some(event) = decode_message(message, decoder).await? {
-        let span = tracing::span!(
-            Level::INFO,
-            "event",
-            fdk_id = event.fdk_id.as_str(),
-            event_type = format!("{:?}", event.event_type).as_str(),
-        );
+    match decode_message(decoder, message).await? {
+        InputEvent::DatasetEvent(event) => {
+            let span = tracing::span!(
+                Level::INFO,
+                "event",
+                fdk_id = event.fdk_id,
+                event_type = format!("{:?}", event.event_type),
+            );
 
-        let response_event = tokio::task::spawn_blocking(move || {
-            let _enter = span.enter();
-            handle_event(event)
-        })
-        .await
-        .map_err(|e| e.to_string())??;
+            let mqa_dataset_event = tokio::task::spawn_blocking(move || {
+                let _enter = span.enter();
+                handle_dataset_event(event)
+            })
+            .await??;
 
-        let encoded = encoder
-            .encode_struct(
-                response_event,
-                &SubjectNameStrategy::RecordNameStrategy("no.fdk.mqa.DatasetEvent".to_string()),
-            )
-            .await?;
+            let encoded = encoder
+                .encode_struct(
+                    mqa_dataset_event,
+                    &SubjectNameStrategy::RecordNameStrategy("no.fdk.mqa.DatasetEvent".to_string()),
+                )
+                .await?;
 
-        let record: FutureRecord<String, Vec<u8>> =
-            FutureRecord::to(&OUTPUT_TOPIC).payload(&encoded);
-        producer
-            .send(record, Duration::from_secs(0))
-            .await
-            .map_err(|e| e.0)?;
-    } else {
-        tracing::info!("skipping event");
+            let record: FutureRecord<String, Vec<u8>> =
+                FutureRecord::to(&OUTPUT_TOPIC).payload(&encoded);
+            producer
+                .send(record, Duration::from_secs(0))
+                .await
+                .map_err(|e| e.0)?;
+        }
+        InputEvent::Unknown { namespace, name } => {
+            tracing::warn!(namespace, name, "skipping unknown event");
+        }
     }
     Ok(())
 }
 
 async fn decode_message(
-    message: &BorrowedMessage<'_>,
     decoder: &mut AvroDecoder<'_>,
-) -> Result<Option<DatasetEvent>, Error> {
-    match decoder.decode(message.payload()).await {
-        Ok(DecodeResult {
+    message: &BorrowedMessage<'_>,
+) -> Result<InputEvent, Error> {
+    match decoder.decode(message.payload()).await? {
+        DecodeResult {
             name:
                 Some(Name {
                     name,
@@ -156,17 +173,31 @@ async fn decode_message(
                     ..
                 }),
             value,
-        }) if name == "DatasetEvent" && namespace == "no.fdk.dataset" => Ok(Some(
-            from_value::<DatasetEvent>(&value).map_err(|e| e.to_string())?,
-        )),
-        Ok(_) => Ok(None),
-        Err(e) => Err(e.into()),
+        } => {
+            let event = match (namespace.as_str(), name.as_str()) {
+                ("no.fdk.dataset", "DatasetEvent") => {
+                    InputEvent::DatasetEvent(avro_rs::from_value::<DatasetEvent>(&value)?)
+                }
+                _ => InputEvent::Unknown { namespace, name },
+            };
+            Ok(event)
+        }
+        _ => Err("unable to identify event without namespace and name".into()),
     }
 }
 
-fn handle_event(mut event: DatasetEvent) -> Result<DatasetEvent, Error> {
-    tracing::info!("handling event");
-    let fdk_id = uuid::Uuid::parse_str(&event.fdk_id).map_err(|e| e.to_string())?;
-    event.graph = Graph::process(event.graph, fdk_id)?;
-    Ok(event)
+fn handle_dataset_event(event: DatasetEvent) -> Result<MqaDatasetEvent, Error> {
+    match event.event_type {
+        DatasetEventType::DatasetHarvested => {
+            let fdk_id = uuid::Uuid::parse_str(&event.fdk_id).map_err(|e| e.to_string())?;
+            let graph = Graph::process(event.graph, fdk_id)?;
+            Ok(MqaDatasetEvent {
+                event_type: MqaDatasetEventType::DatasetHarvested,
+                fdk_id: event.fdk_id,
+                graph,
+                timestamp: event.timestamp,
+            })
+        }
+        DatasetEventType::Unknown => Err(format!("unknown DatasetEventType").into()),
+    }
 }
