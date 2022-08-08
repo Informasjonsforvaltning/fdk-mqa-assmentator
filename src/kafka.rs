@@ -92,7 +92,7 @@ pub async fn run_async_processor(worker_id: usize, sr_settings: SrSettings) -> R
             Level::INFO,
             "message",
             // topic = message.topic(),
-            // partition = message.partition(),
+            partition = message.partition(),
             offset = message.offset(),
             timestamp = message.timestamp().to_millis(),
         );
