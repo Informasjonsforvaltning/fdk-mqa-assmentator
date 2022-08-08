@@ -27,23 +27,33 @@ lazy_static! {
 pub struct Graph(oxigraph::store::Store);
 
 impl Graph {
+    pub fn new() -> Result<Self, Error> {
+        Ok(Graph(Store::new()?))
+    }
+
     /// Inserts hasAssessment properties into graph.
-    pub fn process<G: ToString>(graph: G, dataset_id: Uuid) -> Result<String, Error> {
-        let graph = Graph::parse(graph)?;
-        graph.insert_has_assessment_properties(dataset_id)?;
-        graph.to_string()
+    pub fn process<G: ToString>(&self, graph: G, dataset_id: Uuid) -> Result<String, Error> {
+        self.clear()?;
+        self.parse(graph)?;
+        self.insert_has_assessment_properties(dataset_id)?;
+        self.to_string()
+    }
+
+    /// Clean content of graph.
+    pub fn clear(&self) -> Result<(), Error> {
+        self.0.clear()?;
+        Ok(())
     }
 
     /// Loads graph from string.
-    fn parse<G: ToString>(graph: G) -> Result<Self, Error> {
-        let store = Store::new()?;
-        store.load_graph(
+    fn parse<G: ToString>(&self, graph: G) -> Result<(), Error> {
+        self.0.load_graph(
             graph.to_string().as_ref(),
             GraphFormat::Turtle,
             GraphNameRef::DefaultGraph,
             None,
         )?;
-        Ok(Graph(store))
+        Ok(())
     }
 
     /// Retrieves all subjects of type.
@@ -153,6 +163,7 @@ mod tests {
 
     #[test]
     fn replace() {
+        let g = Graph::new().unwrap();
         let graph = r#"
         <https://dataset.foo> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/ns/dcat#Dataset> .
         <https://dataset.foo> <http://www.w3.org/ns/dcat#distribution> <https://distribution.foo> .
@@ -169,7 +180,7 @@ mod tests {
         _:d <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/ns/dqv#QualityMeasurement> .
         "#;
         let uuid = uuid::Uuid::parse_str("0123bf37-5867-4c90-bc74-5a8c4e118572").unwrap();
-        let replaced = Graph::process(graph, uuid).unwrap();
+        let replaced = g.process(graph, uuid).unwrap();
 
         assert_eq!(
             sorted_lines(replace_blank(&replaced)),
