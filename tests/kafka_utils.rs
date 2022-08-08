@@ -3,6 +3,7 @@ use std::time::Duration;
 use avro_rs::types::Value;
 use fdk_mqa_assmentator::{
     error::Error,
+    graph::Graph,
     kafka::{create_consumer, create_producer, create_sr_settings, handle_message, BROKERS},
     schemas::setup_schemas,
 };
@@ -26,6 +27,7 @@ pub async fn process_single_message() -> Result<(), Error> {
     let consumer = create_consumer().unwrap();
     let mut encoder = AvroEncoder::new(create_sr_settings().unwrap());
     let mut decoder = AvroDecoder::new(create_sr_settings().unwrap());
+    let graph_store = Graph::new().unwrap();
 
     // Attempt to receive message for 3s before aborting with an error
     let message = tokio::time::timeout(Duration::from_millis(3000), consumer.stream().next())
@@ -34,7 +36,14 @@ pub async fn process_single_message() -> Result<(), Error> {
         .unwrap()
         .unwrap();
 
-    handle_message(&producer, &mut decoder, &mut encoder, &message).await
+    handle_message(
+        &producer,
+        &mut decoder,
+        &mut encoder,
+        &graph_store,
+        &message,
+    )
+    .await
 }
 
 pub struct TestProducer<'a> {

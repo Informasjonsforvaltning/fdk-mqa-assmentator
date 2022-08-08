@@ -83,6 +83,7 @@ pub async fn run_async_processor(worker_id: usize, sr_settings: SrSettings) -> R
     let producer = create_producer()?;
     let mut encoder = AvroEncoder::new(sr_settings.clone());
     let mut decoder = AvroDecoder::new(sr_settings);
+    let graph_store = Graph::new()?;
 
     tracing::info!(worker_id, "listening for messages");
     loop {
@@ -96,9 +97,16 @@ pub async fn run_async_processor(worker_id: usize, sr_settings: SrSettings) -> R
             timestamp = message.timestamp().to_millis(),
         );
 
-        receive_message(&consumer, &producer, &mut decoder, &mut encoder, &message)
-            .instrument(span)
-            .await;
+        receive_message(
+            &consumer,
+            &producer,
+            &mut decoder,
+            &mut encoder,
+            &graph_store,
+            &message,
+        )
+        .instrument(span)
+        .await;
     }
 }
 
@@ -107,9 +115,10 @@ async fn receive_message(
     producer: &FutureProducer,
     decoder: &mut AvroDecoder<'_>,
     encoder: &mut AvroEncoder<'_>,
+    graph_store: &Graph,
     message: &BorrowedMessage<'_>,
 ) {
-    match handle_message(producer, decoder, encoder, message).await {
+    match handle_message(producer, decoder, encoder, graph_store, message).await {
         Ok(_) => tracing::info!("message handled successfully"),
         Err(e) => tracing::error!(error = e.to_string(), "failed while handling message"),
     };
@@ -122,6 +131,7 @@ pub async fn handle_message(
     producer: &FutureProducer,
     decoder: &mut AvroDecoder<'_>,
     encoder: &mut AvroEncoder<'_>,
+    graph_store: &Graph,
     message: &BorrowedMessage<'_>,
 ) -> Result<(), Error> {
     match decode_message(decoder, message).await? {
@@ -134,11 +144,9 @@ pub async fn handle_message(
             );
 
             let key = event.fdk_id.clone();
-            let mqa_dataset_event = tokio::task::spawn_blocking(move || {
-                let _enter = span.enter();
-                handle_dataset_event(event)
-            })
-            .await??;
+            let mqa_dataset_event = handle_dataset_event(graph_store, event)
+                .instrument(span)
+                .await?;
 
             let encoded = encoder
                 .encode_struct(
@@ -187,11 +195,14 @@ async fn decode_message(
     }
 }
 
-fn handle_dataset_event(event: DatasetEvent) -> Result<MqaDatasetEvent, Error> {
+async fn handle_dataset_event(
+    graph_store: &Graph,
+    event: DatasetEvent,
+) -> Result<MqaDatasetEvent, Error> {
     match event.event_type {
         DatasetEventType::DatasetHarvested => {
             let fdk_id = uuid::Uuid::parse_str(&event.fdk_id).map_err(|e| e.to_string())?;
-            let graph = Graph::process(event.graph, fdk_id)?;
+            let graph = graph_store.process(event.graph, fdk_id)?;
             Ok(MqaDatasetEvent {
                 event_type: MqaDatasetEventType::DatasetHarvested,
                 fdk_id: event.fdk_id,
