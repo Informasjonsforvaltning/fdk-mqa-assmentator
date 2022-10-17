@@ -162,23 +162,26 @@ pub async fn handle_message(
             );
 
             let key = event.fdk_id.clone();
-            let mqa_dataset_event = handle_dataset_event(graph_store, event)
+            if let Some(mqa_dataset_event) = handle_dataset_event(graph_store, event)
                 .instrument(span)
-                .await?;
+                .await?
+            {
+                let encoded = encoder
+                    .encode_struct(
+                        mqa_dataset_event,
+                        &SubjectNameStrategy::RecordNameStrategy(
+                            "no.fdk.mqa.DatasetEvent".to_string(),
+                        ),
+                    )
+                    .await?;
 
-            let encoded = encoder
-                .encode_struct(
-                    mqa_dataset_event,
-                    &SubjectNameStrategy::RecordNameStrategy("no.fdk.mqa.DatasetEvent".to_string()),
-                )
-                .await?;
-
-            let record: FutureRecord<String, Vec<u8>> =
-                FutureRecord::to(&OUTPUT_TOPIC).key(&key).payload(&encoded);
-            producer
-                .send(record, Duration::from_secs(0))
-                .await
-                .map_err(|e| e.0)?;
+                let record: FutureRecord<String, Vec<u8>> =
+                    FutureRecord::to(&OUTPUT_TOPIC).key(&key).payload(&encoded);
+                producer
+                    .send(record, Duration::from_secs(0))
+                    .await
+                    .map_err(|e| e.0)?;
+            }
         }
         InputEvent::Unknown { namespace, name } => {
             tracing::warn!(namespace, name, "skipping unknown event");
@@ -216,18 +219,20 @@ async fn decode_message(
 async fn handle_dataset_event(
     graph_store: &Graph,
     event: DatasetEvent,
-) -> Result<MqaDatasetEvent, Error> {
+) -> Result<Option<MqaDatasetEvent>, Error> {
     match event.event_type {
         DatasetEventType::DatasetHarvested => {
             let fdk_id = uuid::Uuid::parse_str(&event.fdk_id).map_err(|e| e.to_string())?;
             let graph = graph_store.process(event.graph, fdk_id)?;
-            Ok(MqaDatasetEvent {
+            Ok(Some(MqaDatasetEvent {
                 event_type: MqaDatasetEventType::DatasetHarvested,
                 fdk_id: event.fdk_id,
                 graph,
                 timestamp: event.timestamp,
-            })
+            }))
         }
+        DatasetEventType::DatasetReasoned => Ok(None),
+        DatasetEventType::DatasetRemoved => Ok(None),
         DatasetEventType::Unknown => Err(format!("unknown DatasetEventType").into()),
     }
 }
