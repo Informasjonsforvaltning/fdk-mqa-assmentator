@@ -11,7 +11,7 @@ lazy_static = "1.4.0"
 oxigraph = "0.3.2"
 prometheus = "0.13.1"
 rdkafka = "0.28.0"
-schema_registry_converter = { version = "2.1.0", features = ["avro", "futures", "rustls_tls"], default-features=false }
+schema_registry_converter = { version = "3.1.0", features = ["avro", "futures", "rustls_tls"], default-features=false }
 serde = "1.0.137"
 serde_derive = "1.0.137"
 sha2 = "0.10.2"
