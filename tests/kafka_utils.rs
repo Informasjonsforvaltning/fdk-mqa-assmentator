@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-use avro_rs::types::Value;
+use apache_avro::types::Value;
 use fdk_mqa_assmentator::{
     error::Error,
     graph::Graph,
