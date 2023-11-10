@@ -58,7 +58,7 @@ async fn assert_transformation(fdk_id: &str, input: &str, expected: &str) {
 
     // Consume message produced by assmentator
     let message = consumer.recv().await;
-    let event = avro_rs::from_value::<DatasetEvent>(&message).unwrap();
+    let event = apache_avro::from_value::<DatasetEvent>(&message).unwrap();
 
     assert_eq!(sorted_lines(&event.graph), sorted_lines(expected));
 }
