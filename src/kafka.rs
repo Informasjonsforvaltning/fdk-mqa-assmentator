@@ -6,7 +6,6 @@ use std::{
 use apache_avro::schema::Name;
 use lazy_static::lazy_static;
 use rdkafka::{
-    config::RDKafkaLogLevel,
     consumer::{Consumer, StreamConsumer},
     error::KafkaError,
     message::BorrowedMessage,
