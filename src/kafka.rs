@@ -25,7 +25,7 @@ use tracing::{Instrument, Level};
 use crate::{
     error::Error,
     graph::Graph,
-    metrics::{PROCESSED_MESSAGES, PROCESSING_TIME},
+    metrics::{PROCESSED_MESSAGES, PROCESSING_TIME, PRODUCED_MESSAGES},
     schemas::{DatasetEvent, DatasetEventType, InputEvent, MqaDatasetEvent, MqaDatasetEventType},
 };
 
@@ -174,10 +174,23 @@ pub async fn handle_message(
 
                 let record: FutureRecord<String, Vec<u8>> =
                     FutureRecord::to(&OUTPUT_TOPIC).key(&key).payload(&encoded);
-                producer
+                let result = producer
                     .send(record, Duration::from_secs(0))
                     .await
-                    .map_err(|e| e.0)?;
+                    .map_err(|e| e.0);
+                
+                match result {
+                    Ok(_) => {
+                        tracing::info!(fdk_id = key, "message produced successfully");
+                        PRODUCED_MESSAGES.with_label_values(&["success"]).inc();
+                        Ok::<(), Error>(())
+                    }
+                    Err(e) => {
+                        tracing::error!(fdk_id = key, error = e.to_string(), "failed to produce message");
+                        PRODUCED_MESSAGES.with_label_values(&["error"]).inc();
+                        Err(e.into())    
+                    }
+                }?;
             }
         }
         InputEvent::Unknown { namespace, name } => {
