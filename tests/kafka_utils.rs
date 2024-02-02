@@ -20,7 +20,7 @@ use schema_registry_converter::{
 };
 use serde::Serialize;
 
-pub async fn process_single_message() -> Result<(), Error> {
+pub async fn process_single_message() -> Result<bool, Error> {
     setup_schemas(&create_sr_settings().unwrap()).await.unwrap();
 
     let producer = create_producer().unwrap();
