@@ -123,9 +123,13 @@ async fn receive_message(
     let result = handle_message(producer, decoder, encoder, graph_store, message).await;
     let elapsed_millis = start_time.elapsed().as_millis();
     match result {
-        Ok(_) => {
+        Ok(skipped) => {
             tracing::info!(elapsed_millis, "message handled successfully");
-            PROCESSED_MESSAGES.with_label_values(&["success"]).inc();
+            PROCESSED_MESSAGES.with_label_values(&["success", skipped.to_string().as_str()]).inc();
+
+            if !skipped {
+                PROCESSING_TIME.observe(elapsed_millis as f64 / 1000.0);
+            }
         }
         Err(e) => {
             tracing::error!(
@@ -133,10 +137,10 @@ async fn receive_message(
                 error = e.to_string(),
                 "failed while handling message"
             );
-            PROCESSED_MESSAGES.with_label_values(&["error"]).inc();
+            PROCESSED_MESSAGES.with_label_values(&["error", "false"]).inc();
         }
     };
-    PROCESSING_TIME.observe(elapsed_millis as f64 / 1000.0);
+    
     if let Err(e) = consumer.store_offset_from_message(&message) {
         tracing::warn!(error = e.to_string(), "failed to store offset");
     };
@@ -148,7 +152,7 @@ pub async fn handle_message(
     encoder: &mut AvroEncoder<'_>,
     graph_store: &Graph,
     message: &BorrowedMessage<'_>,
-) -> Result<(), Error> {
+) -> Result<bool, Error> {
     match decode_message(decoder, message).await? {
         InputEvent::DatasetEvent(event) => {
             let span = tracing::span!(
@@ -179,25 +183,28 @@ pub async fn handle_message(
                     .await
                     .map_err(|e| e.0);
                 
-                match result {
+                return match result {
                     Ok(_) => {
                         tracing::info!(fdk_id = key, "message produced successfully");
                         PRODUCED_MESSAGES.with_label_values(&["success"]).inc();
-                        Ok::<(), Error>(())
+                        Ok(false)
                     }
                     Err(e) => {
                         tracing::error!(fdk_id = key, error = e.to_string(), "failed to produce message");
                         PRODUCED_MESSAGES.with_label_values(&["error"]).inc();
-                        Err(e.into())    
+                        Err(e.into())
                     }
-                }?;
+                };
+            } else {
+                Ok(true)
             }
+            
         }
         InputEvent::Unknown { namespace, name } => {
             tracing::warn!(namespace, name, "skipping unknown event");
+            return Ok(true);
         }
     }
-    Ok(())
 }
 
 async fn decode_message(
