@@ -21,6 +21,14 @@ lazy_static! {
         tracing::error!(error = e.to_string(), "processing_time");
         std::process::exit(1);
     });
+    pub static ref PRODUCED_MESSAGES: IntCounterVec = IntCounterVec::new(
+        Opts::new("produced_messages", "Produced Messages"),
+        &["status"]
+    )
+    .unwrap_or_else(|e| {
+        tracing::error!(error = e.to_string(), "produced_messages metric error");
+        std::process::exit(1);
+    });
 }
 
 pub fn register_metrics() {
@@ -34,9 +42,16 @@ pub fn register_metrics() {
     REGISTRY
         .register(Box::new(PROCESSING_TIME.clone()))
         .unwrap_or_else(|e| {
-            tracing::error!(error = e.to_string(), "response_time collector error");
+            tracing::error!(error = e.to_string(), "processing_time collector error");
             std::process::exit(1);
         });
+
+    REGISTRY
+        .register(Box::new(PRODUCED_MESSAGES.clone()))
+        .unwrap_or_else(|e| {
+            tracing::error!(error = e.to_string(), "produced_messages collector error");
+            std::process::exit(1);
+        });    
 }
 
 pub fn get_metrics() -> Result<String, Error> {
