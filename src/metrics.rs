@@ -7,7 +7,7 @@ lazy_static! {
     pub static ref REGISTRY: Registry = Registry::new();
     pub static ref PROCESSED_MESSAGES: IntCounterVec = IntCounterVec::new(
         Opts::new("processed_messages", "Processed Messages"),
-        &["status", "skipped"]
+        &["status"]
     )
     .unwrap_or_else(|e| {
         tracing::error!(error = e.to_string(), "processed_messages metric error");
