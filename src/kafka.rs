@@ -125,10 +125,11 @@ async fn receive_message(
     match result {
         Ok(skipped) => {
             tracing::info!(elapsed_millis, "message handled successfully");
-            PROCESSED_MESSAGES.with_label_values(&[if skipped { "skipped" } else { "success" }]).inc();
-
             if !skipped {
+                PROCESSED_MESSAGES.with_label_values(&["success"]).inc();
                 PROCESSING_TIME.observe(elapsed_millis as f64 / 1000.0);
+            } else {
+                PROCESSED_MESSAGES.with_label_values(&["skipped"]).inc();
             }
         }
         Err(e) => {
@@ -137,7 +138,7 @@ async fn receive_message(
                 error = e.to_string(),
                 "failed while handling message"
             );
-            PROCESSED_MESSAGES.with_label_values(&["error", "false"]).inc();
+            PROCESSED_MESSAGES.with_label_values(&["error"]).inc();
         }
     };
     
