@@ -12,7 +12,7 @@ oxigraph = "0.3.20"
 prometheus = "0.13.3"
 rdkafka = "0.36.0"
 schema_registry_converter = { version = "4.0.0", features = ["avro", "futures", "rustls_tls"], default-features=false }
-serde = "1.0.192"
+serde = "1.0.202"
 serde_derive = "1.0.192"
 sha2 = "0.10.8"
 thiserror = "1.0.50"
