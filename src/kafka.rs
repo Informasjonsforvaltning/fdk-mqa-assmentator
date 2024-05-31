@@ -1,6 +1,5 @@
 use std::{
-    env,
-    time::{Duration, Instant},
+    env, mem, time::{Duration, Instant}
 };
 
 use apache_avro::schema::Name;
@@ -49,7 +48,7 @@ pub fn create_sr_settings() -> Result<SrSettings, Error> {
     });
 
     let sr_settings = sr_settings_builder
-        .set_timeout(Duration::from_secs(5))
+        .set_timeout(Duration::from_secs(30))
         .build()?;
     Ok(sr_settings)
 }
@@ -75,6 +74,7 @@ pub fn create_producer() -> Result<FutureProducer, KafkaError> {
         .set("bootstrap.servers", BROKERS.clone())
         .set("message.timeout.ms", "5000")
         .set("compression.type", "snappy")
+        .set("message.max.bytes", "2097152") // 2MiB
         .create()
 }
 
