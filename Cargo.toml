@@ -8,7 +8,7 @@ actix-web = "4.4.0"
 apache-avro = "0.16.0"
 futures = "0.3.29"
 lazy_static = "1.4.0"
-oxigraph = "0.3.20"
+oxigraph = "0.4.0"
 prometheus = "0.13.3"
 rdkafka = "0.36.0"
 schema_registry_converter = { version = "4.0.0", features = ["avro", "futures", "rustls_tls"], default-features=false }
