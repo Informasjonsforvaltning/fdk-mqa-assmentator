@@ -6,7 +6,7 @@ edition = "2021"
 [dependencies]
 actix-web = "4.4.0"
 apache-avro = "0.16.0"
-futures = "0.3.29"
+futures = "0.3.31"
 lazy_static = "1.4.0"
 oxigraph = "0.3.20"
 prometheus = "0.13.3"
