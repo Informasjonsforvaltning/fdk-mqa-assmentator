@@ -20,19 +20,18 @@ jobs:
   build:
     name: Build with reusable workflow when pull request is created
     if: github.event.pull_request.draft == false
-    uses: Informasjonsforvaltning/workflows/.github/workflows/build-push.yaml@feat/hos/github-packages
+    uses: Informasjonsforvaltning/workflows/.github/workflows/build-push.yaml@main
     with:
       app_name: fdk-mqa-assmentator
       environment: staging
     secrets:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      GCP_SA_DIGDIR_FDK_GCR_KEY: ${{ secrets.GCP_SA_DIGDIR_FDK_GCR_KEY }}
 
   deploy:
     name: Deploy to staging environment with reusable workflow when test and build is successful
     if: ${{ github.actor != 'dependabot[bot]' && github.event.pull_request.draft == false }}
     needs: [test, build]
-    uses: Informasjonsforvaltning/workflows/.github/workflows/deploy.yaml@feat/hos/github-packages
+    uses: Informasjonsforvaltning/workflows/.github/workflows/deploy.yaml@main
     with:
       app_name: fdk-mqa-assmentator
       environment: staging
