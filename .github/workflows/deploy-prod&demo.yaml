@@ -28,7 +28,7 @@ jobs:
   deploy:
     name: Deploy to prod environment with reusable workflow when test and build is successful
     needs: [test, build]
-    uses: Informasjonsforvaltning/workflows/.github/workflows/deploy.yaml@main
+    uses: Informasjonsforvaltning/workflows/.github/workflows/kustomize-deploy.yaml@main
     with:
       app_name: fdk-mqa-assmentator
       environment: prod
@@ -41,7 +41,7 @@ jobs:
   deploy_demo:
     name: Deploy to demo environment with reusable workflow when prod deploy is successful
     needs: [deploy]
-    uses: Informasjonsforvaltning/workflows/.github/workflows/deploy.yaml@main
+    uses: Informasjonsforvaltning/workflows/.github/workflows/kustomize-deploy.yaml@main
     with:
       app_name: fdk-mqa-assmentator
       environment: demo
