@@ -31,7 +31,7 @@ jobs:
     name: Deploy to staging environment with reusable workflow when test and build is successful
     if: ${{ github.actor != 'dependabot[bot]' && github.event.pull_request.draft == false }}
     needs: [test, build]
-    uses: Informasjonsforvaltning/workflows/.github/workflows/deploy.yaml@main
+    uses: Informasjonsforvaltning/workflows/.github/workflows/kustomize-deploy.yaml@main
     with:
       app_name: fdk-mqa-assmentator
       environment: staging
