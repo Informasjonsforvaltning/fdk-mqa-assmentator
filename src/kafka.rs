@@ -1,5 +1,5 @@
 use std::{
-    env, mem, time::{Duration, Instant}
+    env, time::{Duration, Instant}
 };
 
 use apache_avro::schema::Name;
