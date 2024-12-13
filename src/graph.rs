@@ -1,4 +1,4 @@
-use std::{env, io::Cursor};
+use std::env;
 
 use crate::{
     error::Error,
@@ -6,7 +6,7 @@ use crate::{
 };
 use lazy_static::lazy_static;
 use oxigraph::{
-    io::GraphFormat,
+    io::{RdfFormat, RdfParser},
     model::{GraphNameRef, NamedNode, NamedNodeRef, Quad, Subject},
     store::{StorageError, Store},
 };
@@ -24,7 +24,7 @@ lazy_static! {
         env::var("MQA_URI_BASE").unwrap_or("http://localhost:8080".to_string());
 }
 
-pub struct Graph(oxigraph::store::Store);
+pub struct Graph(Store);
 
 impl Graph {
     pub fn new() -> Result<Self, Error> {
@@ -47,11 +47,11 @@ impl Graph {
 
     /// Loads graph from string.
     fn parse<G: ToString>(&self, graph: G) -> Result<(), Error> {
-        self.0.load_graph(
-            graph.to_string().as_ref(),
-            GraphFormat::Turtle,
-            GraphNameRef::DefaultGraph,
-            None,
+        self.0.load_from_reader(
+            RdfParser::from_format(RdfFormat::Turtle)
+                .without_named_graphs()
+                .with_default_graph(GraphNameRef::DefaultGraph),
+            graph.to_string().as_bytes().as_ref()
         )?;
         Ok(())
     }
@@ -109,11 +109,11 @@ impl Graph {
 
     /// Dump graph to string.
     fn to_string(&self) -> Result<String, Error> {
-        let mut buff = Cursor::new(Vec::new());
+        let mut buff = Vec::new();
         self.0
-            .dump_graph(&mut buff, GraphFormat::Turtle, GraphNameRef::DefaultGraph)?;
+            .dump_graph_to_writer(GraphNameRef::DefaultGraph, RdfFormat::Turtle, &mut buff)?;
 
-        Ok(String::from_utf8(buff.into_inner())?)
+        Ok(String::from_utf8(buff)?)
     }
 }
 
@@ -126,7 +126,7 @@ fn uuid_from_str(s: String) -> Uuid {
     uuid::Uuid::from_u128(u128::from_le_bytes(*head.as_ref()))
 }
 
-// Attemts to extract quad subject as named node.
+// Attempts to extract quad subject as named node.
 fn named_quad_subject(result: Result<Quad, StorageError>) -> Result<NamedNode, Error> {
     match result?.subject {
         Subject::NamedNode(node) => Ok(node),
@@ -137,29 +137,10 @@ fn named_quad_subject(result: Result<Quad, StorageError>) -> Result<NamedNode, E
 #[cfg(test)]
 mod tests {
     use super::Graph;
-
-    pub fn replace_blank(text: &str) -> String {
-        let mut chars = text.chars().collect::<Vec<char>>();
-        for i in (0..(chars.len() - 2)).rev() {
-            if chars[i] == '_' && chars[i + 1] == ':' {
-                while chars[i] != ' ' {
-                    chars.remove(i);
-                }
-                chars.insert(i, 'b')
-            }
-        }
-        chars.iter().collect::<String>()
-    }
-
-    pub fn sorted_lines(text: String) -> Vec<String> {
-        let mut lines: Vec<String> = text
-            .split("\n")
-            .map(|l| l.trim().to_string())
-            .filter(|l| l.len() > 0)
-            .collect();
-        lines.sort();
-        lines
-    }
+    use sophia_api::term::SimpleTerm;
+    use sophia_api::source::TripleSource;
+    use sophia_isomorphism::isomorphic_graphs;
+    use sophia_turtle::parser::turtle::parse_str;
 
     #[test]
     fn replace() {
@@ -182,10 +163,10 @@ mod tests {
         let uuid = uuid::Uuid::parse_str("0123bf37-5867-4c90-bc74-5a8c4e118572").unwrap();
         let replaced = g.process(graph, uuid).unwrap();
 
-        assert_eq!(
-            sorted_lines(replace_blank(&replaced)),
-            sorted_lines(replace_blank(
-                r#"
+        let result_graph: Vec<[SimpleTerm; 3]> = parse_str(&replaced).collect_triples().unwrap();
+
+        let expected_graph: Vec<[SimpleTerm; 3]> = parse_str(
+            r#"
                 <https://dataset.foo> <https://data.norge.no/vocabulary/dcatno-mqa#hasAssessment> <http://localhost:8080/assessments/datasets/0123bf37-5867-4c90-bc74-5a8c4e118572> .
                 <https://distribution.foo> <https://data.norge.no/vocabulary/dcatno-mqa#hasAssessment> <http://localhost:8080/assessments/distributions/83f6bed5-11ed-413b-0f62-23c05b20009f> .
                 <https://distribution.bar> <https://data.norge.no/vocabulary/dcatno-mqa#hasAssessment> <http://localhost:8080/assessments/distributions/4107c895-36c0-edba-ed6d-34d9b72a95d8> .
@@ -204,7 +185,8 @@ mod tests {
                 _:c <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/ns/dqv#QualityMeasurement> .
                 _:d <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/ns/dqv#QualityMeasurement> .
                 "#
-            ))
-        )
+        ).collect_triples().unwrap();
+
+        assert!(isomorphic_graphs(&expected_graph, &result_graph).unwrap())
     }
 }

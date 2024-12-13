@@ -3,10 +3,12 @@ use fdk_mqa_assmentator::{
     schemas::{DatasetEvent, DatasetEventType},
 };
 use kafka_utils::{process_single_message, TestConsumer, TestProducer};
-use utils::sorted_lines;
+use sophia_api::term::SimpleTerm;
+use sophia_api::source::TripleSource;
+use sophia_isomorphism::isomorphic_graphs;
+use sophia_turtle::parser::turtle::parse_str;
 
 mod kafka_utils;
-mod utils;
 
 #[tokio::test]
 async fn named_dataset() {
@@ -60,5 +62,8 @@ async fn assert_transformation(fdk_id: &str, input: &str, expected: &str) {
     let message = consumer.recv().await;
     let event = apache_avro::from_value::<DatasetEvent>(&message).unwrap();
 
-    assert_eq!(sorted_lines(&event.graph), sorted_lines(expected));
+    let expected_graph: Vec<[SimpleTerm; 3]> = parse_str(expected).collect_triples().unwrap();
+    let result_graph: Vec<[SimpleTerm; 3]> = parse_str(&event.graph).collect_triples().unwrap();
+
+    assert!(isomorphic_graphs(&expected_graph, &result_graph).unwrap())
 }
