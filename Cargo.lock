@@ -1134,9 +1134,9 @@ dependencies = [
 
 [[package]]
 name = "json-event-parser"
-version = "0.1.1"
+version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "32f12e624eaeb74accb9bb48f01cb071427f68115aaafa5689acb372d7e22977"
+checksum = "f850fafca79ebacd70eab9d80cb75a33aeda38bde8f3dd784c1837cdf0bde631"
 
 [[package]]
 name = "language-tags"
@@ -1416,33 +1416,33 @@ checksum = "b15813163c1d831bf4a13c3610c05c0d03b39feb07f7e09fa234dac9b15aaf39"
 
 [[package]]
 name = "oxigraph"
-version = "0.3.22"
+version = "0.4.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3285d2243e62417ee2cabeae86d3dcc07cfb7e5eaf1cd94b799d4f68f3d3a149"
+checksum = "76d71e05183c0070879d9518019528f01a214a278eda34cd2c5d58721baed325"
 dependencies = [
+ "dashmap",
  "digest",
  "getrandom",
  "hex",
- "js-sys",
  "json-event-parser",
- "lazy_static",
  "libc",
  "md-5",
  "oxilangtag",
  "oxiri",
  "oxrdf",
+ "oxrdfio",
  "oxrocksdb-sys",
  "oxsdatatypes",
  "rand",
  "regex",
- "rio_api",
- "rio_turtle",
- "rio_xml",
- "sha-1",
+ "rustc-hash 2.1.0",
+ "sha1",
  "sha2",
  "siphasher",
  "sparesults",
  "spargebra",
+ "sparopt",
+ "thiserror 2.0.6",
 ]
 
 [[package]]
@@ -1462,21 +1462,47 @@ checksum = "3038e706f26b00e3981cd08bfd300dbe82f635ea95a263d492c6ccaeb3d1c582"
 
 [[package]]
 name = "oxrdf"
-version = "0.1.7"
+version = "0.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "309287c8a757e25e06a6156acbd73770bac3e319123f5b4bc0a42e232caf97a5"
+checksum = "934b857076ddaada5c987ef66c8a4e93ed10b7cd408ad15aa06a88762477a25d"
 dependencies = [
  "oxilangtag",
  "oxiri",
  "oxsdatatypes",
  "rand",
+ "thiserror 2.0.6",
+]
+
+[[package]]
+name = "oxrdfio"
+version = "0.1.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9313b6dfe892ce1e26f808b88045b0b77c45b5a32f34a6c96c9315a437e3d33b"
+dependencies = [
+ "oxrdf",
+ "oxrdfxml",
+ "oxttl",
+ "thiserror 2.0.6",
+]
+
+[[package]]
+name = "oxrdfxml"
+version = "0.1.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cadf1802367474fc70646c97e9eb3b88259a671b200562c7e950a9bebd9881a5"
+dependencies = [
+ "oxilangtag",
+ "oxiri",
+ "oxrdf",
+ "quick-xml",
+ "thiserror 2.0.6",
 ]
 
 [[package]]
 name = "oxrocksdb-sys"
-version = "0.3.22"
+version = "0.4.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9ae9dedf33a65029a914b6fb4abc117ead4d4a6e7af295d2979a76f77cb36190"
+checksum = "129fe62b7f053e8f53d74737cf907c87003d79f905b036b98b5910abdb824151"
 dependencies = [
  "bindgen",
  "cc",
@@ -1485,11 +1511,24 @@ dependencies = [
 
 [[package]]
 name = "oxsdatatypes"
+version = "0.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f3e0497e4fa5caa8e0d1cc750cb6546a98feb938f2d45db065aceb03210f741d"
+dependencies = [
+ "thiserror 2.0.6",
+]
+
+[[package]]
+name = "oxttl"
 version = "0.1.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "edeb0770b5afd066427e12e38998e15de7c2cc6048a5817bbb602130d42a55c9"
+checksum = "942e885cf9fe9a0432554a5590e513c01c8911ceb32c17095dc7c4a76d53675e"
 dependencies = [
- "js-sys",
+ "memchr",
+ "oxilangtag",
+ "oxiri",
+ "oxrdf",
+ "thiserror 2.0.6",
 ]
 
 [[package]]
@@ -1644,18 +1683,9 @@ checksum = "5a651516ddc9168ebd67b24afd085a718be02f8858fe406591b013d101ce2f40"
 
 [[package]]
 name = "quick-xml"
-version = "0.28.2"
+version = "0.37.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0ce5e73202a820a31f8a0ee32ada5e21029c81fd9e3ebf668a40832e4219d9d1"
-dependencies = [
- "memchr",
-]
-
-[[package]]
-name = "quick-xml"
-version = "0.36.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f7649a7b4df05aed9ea7ec6f628c67c9953a43869b8bc50929569b2999d443fe"
+checksum = "f22f29bdff3987b4d8632ef95fd6424ec7e4e0a57e2f4fc63e489e75357f6a03"
 dependencies = [
  "memchr",
 ]
@@ -1898,35 +1928,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "rio_api"
-version = "0.8.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "61d0c76ddf8b00cbb4d2c5932d067d49245c2f1f651809bde3cf265033ddb1af"
-
-[[package]]
-name = "rio_turtle"
-version = "0.8.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d6f351b77353c7c896f0cd5ced2a25a7e95b5360cb68d1d7c16682ee096d7f40"
-dependencies = [
- "oxilangtag",
- "oxiri",
- "rio_api",
-]
-
-[[package]]
-name = "rio_xml"
-version = "0.8.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "abd3384ae785ed3b0159607adc08adef580a28e277fbfa375c42d162e9da93b1"
-dependencies = [
- "oxilangtag",
- "oxiri",
- "quick-xml 0.36.2",
- "rio_api",
-]
-
-[[package]]
 name = "rle-decode-fast"
 version = "1.0.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2108,17 +2109,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "sha-1"
-version = "0.10.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f5058ada175748e33390e40e872bd0fe59a19f265d0158daa551c5a88a76009c"
-dependencies = [
- "cfg-if",
- "cpufeatures",
- "digest",
-]
-
-[[package]]
 name = "sha1"
 version = "0.10.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2197,26 +2187,40 @@ dependencies = [
 
 [[package]]
 name = "sparesults"
-version = "0.1.8"
+version = "0.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c301a876e05c887d2f23f47f7822719435d36038856a9681cc7351d9c2677ce4"
+checksum = "7d5d1bfb0d8dcd4e44080619bb791d20b3c1d06f2525172304711ee8ebb351fb"
 dependencies = [
  "json-event-parser",
+ "memchr",
  "oxrdf",
- "quick-xml 0.28.2",
+ "quick-xml",
+ "thiserror 2.0.6",
 ]
 
 [[package]]
 name = "spargebra"
-version = "0.2.8"
+version = "0.3.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9fb45c36a61e7c8c0c949db8ee6aac1efda0511289ce9146ba28ba27b4760204"
+checksum = "51eba38df55daa8c83a0585c7fdd055d9fbb3e481d0b5f88bc6b2a86df4da79d"
 dependencies = [
  "oxilangtag",
  "oxiri",
  "oxrdf",
  "peg",
  "rand",
+ "thiserror 2.0.6",
+]
+
+[[package]]
+name = "sparopt"
+version = "0.1.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "dd2bc2d205a256c3cc9e074a9caa2d6b9aae37fb925a546b2bcd76e99da6183e"
+dependencies = [
+ "oxrdf",
+ "rand",
+ "spargebra",
 ]
 
 [[package]]
