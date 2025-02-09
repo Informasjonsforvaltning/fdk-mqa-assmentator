@@ -19,7 +19,7 @@ thiserror = "2.0.11"
 tokio = { version = "1.43.0", features = ["full"] }
 tracing = "0.1.41"
 tracing-subscriber =  { version = "0.3.19", features = ["json", "env-filter", "tracing-log"] }
-uuid = "1.12.1"
+uuid = "1.13.1"
 
 [dev-dependencies]
 sophia_api= "0.9.0"
