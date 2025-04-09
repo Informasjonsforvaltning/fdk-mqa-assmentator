@@ -20,6 +20,7 @@ jobs:
     with:
       app_name: fdk-mqa-assmentator
       environment: prod
+      gh_environment: prod
     secrets:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -30,6 +31,7 @@ jobs:
     with:
       app_name: fdk-mqa-assmentator
       environment: prod
+      gh_environment: prod
       cluster: digdir-fdk-prod
     secrets:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -43,6 +45,7 @@ jobs:
     with:
       app_name: fdk-mqa-assmentator
       environment: demo
+      gh_environment: demo
       cluster: digdir-fdk-dev
     secrets:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
