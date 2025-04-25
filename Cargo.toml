@@ -4,22 +4,22 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-actix-web = "4.9.0"
-apache-avro = "0.17.0"
-futures = "0.3.31"
+actix-web = "4.10.2"
+apache-avro = "0.18.0"
+futures = "0.3"
 lazy_static = "1.5.0"
-oxigraph = "0.4.7"
-prometheus = "0.13.4"
+oxigraph = "0.4.9"
+prometheus = "0.14.0"
 rdkafka = "0.37.0"
-schema_registry_converter = { version = "4.2.0", features = ["avro", "futures", "rustls_tls"], default-features=false }
-serde = "1.0.217"
-serde_derive = "1.0.217"
+schema_registry_converter = { version = "4.4.0", features = ["avro", "futures", "rustls_tls"], default-features=false }
+serde = "1.0.219"
+serde_derive = "1.0.219"
 sha2 = "0.10.8"
-thiserror = "2.0.11"
-tokio = { version = "1.43.0", features = ["full"] }
+thiserror = "2.0.12"
+tokio = { version = "1.44.2", features = ["full"] }
 tracing = "0.1.41"
 tracing-subscriber =  { version = "0.3.19", features = ["json", "env-filter", "tracing-log"] }
-uuid = "1.12.1"
+uuid = "1.16.0"
 
 [dev-dependencies]
 sophia_api= "0.9.0"
