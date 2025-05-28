@@ -132,6 +132,10 @@ async fn receive_message(
             } else {
                 PROCESSED_MESSAGES.with_label_values(&["skipped"]).inc();
             }
+
+            if let Err(e) = consumer.store_offset_from_message(&message) {
+                tracing::warn!(error = e.to_string(), "failed to store offset");
+            };
         }
         Err(e) => {
             tracing::error!(
@@ -141,10 +145,6 @@ async fn receive_message(
             );
             PROCESSED_MESSAGES.with_label_values(&["error"]).inc();
         }
-    };
-    
-    if let Err(e) = consumer.store_offset_from_message(&message) {
-        tracing::warn!(error = e.to_string(), "failed to store offset");
     };
 }
 
