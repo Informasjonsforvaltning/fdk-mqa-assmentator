@@ -33,16 +33,9 @@ impl Graph {
 
     /// Inserts hasAssessment properties into graph.
     pub fn process<G: ToString>(&self, graph: G, dataset_id: Uuid) -> Result<String, Error> {
-        self.clear()?;
         self.parse(graph)?;
         self.insert_has_assessment_properties(dataset_id)?;
         self.to_string()
-    }
-
-    /// Clean content of graph.
-    pub fn clear(&self) -> Result<(), Error> {
-        self.0.clear()?;
-        Ok(())
     }
 
     /// Loads graph from string.
@@ -51,7 +44,7 @@ impl Graph {
             RdfParser::from_format(RdfFormat::Turtle)
                 .without_named_graphs()
                 .with_default_graph(GraphNameRef::DefaultGraph),
-            graph.to_string().as_bytes().as_ref()
+            graph.to_string().as_bytes().as_ref(),
         )?;
         Ok(())
     }
@@ -137,8 +130,8 @@ fn named_quad_subject(result: Result<Quad, StorageError>) -> Result<NamedNode, E
 #[cfg(test)]
 mod tests {
     use super::Graph;
-    use sophia_api::term::SimpleTerm;
     use sophia_api::source::TripleSource;
+    use sophia_api::term::SimpleTerm;
     use sophia_isomorphism::isomorphic_graphs;
     use sophia_turtle::parser::turtle::parse_str;
 
