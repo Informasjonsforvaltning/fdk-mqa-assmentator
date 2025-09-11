@@ -26,6 +26,22 @@ spec:
           imagePullPolicy: Always
           ports:
             - containerPort: 8080
+          env:
+            - name: NAMESPACE
+              valueFrom:
+                secretKeyRef:
+                  name: common
+                  key: NAMESPACE
+            - name: SCHEMA_REGISTRY
+              valueFrom:
+                secretKeyRef:
+                  name: fdk-metadata-quality
+                  key: SCHEMA_REGISTRY
+            - name: BROKERS
+              valueFrom:
+                secretKeyRef:
+                  name: fdk-metadata-quality
+                  key: BROKERS
           resources:
             requests:
               memory: "500Mi"
