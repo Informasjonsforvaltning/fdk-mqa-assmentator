@@ -10,13 +10,7 @@ use oxigraph::{
     model::{GraphNameRef, NamedNode, NamedNodeRef, Quad, Subject},
     store::{StorageError, Store},
 };
-use sha2::{
-    digest::{
-        consts::U16,
-        generic_array::{sequence::Split, GenericArray},
-    },
-    Digest, Sha256,
-};
+use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
 lazy_static! {
@@ -115,8 +109,10 @@ fn uuid_from_str(s: String) -> Uuid {
     let mut hasher = Sha256::new();
     hasher.update(s);
     let hash = hasher.finalize();
-    let (head, _): (GenericArray<_, U16>, _) = Split::split(hash);
-    uuid::Uuid::from_u128(u128::from_le_bytes(*head.as_ref()))
+    let hash_bytes: &[u8] = hash.as_ref();
+    let mut bytes = [0u8; 16];
+    bytes.copy_from_slice(&hash_bytes[..16]);
+    uuid::Uuid::from_u128(u128::from_le_bytes(bytes))
 }
 
 // Attempts to extract quad subject as named node.

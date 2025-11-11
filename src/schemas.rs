@@ -92,6 +92,8 @@ pub async fn register_schema(
             schema_type: SchemaType::Avro,
             schema: schema_str.to_string(),
             references: vec![],
+            properties: Some(std::collections::HashMap::new()),
+            tags: Some(std::collections::HashMap::new()),
         },
     )
     .await?;
