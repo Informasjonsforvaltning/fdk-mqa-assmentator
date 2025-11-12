@@ -1,3 +1,10 @@
+//! RDF graph processing and enrichment.
+//!
+//! This module provides functionality to:
+//! - Parse RDF graphs in Turtle format
+//! - Enrich graphs with `hasAssessment` properties for datasets and distributions
+//! - Serialize graphs back to Turtle format
+
 use std::env;
 
 use crate::{
@@ -14,25 +21,66 @@ use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
 lazy_static! {
+    /// Base URI for MQA assessment endpoints.
+    ///
+    /// Read from the `MQA_URI_BASE` environment variable, defaults to `http://localhost:8080`.
+    /// Used to construct assessment URIs for datasets and distributions.
     pub static ref MQA_URI_BASE: String =
         env::var("MQA_URI_BASE").unwrap_or("http://localhost:8080".to_string());
 }
 
+/// RDF graph store wrapper for processing and enriching graphs.
+///
+/// This struct wraps an Oxigraph `Store` and provides methods to:
+/// - Parse RDF graphs from Turtle format
+/// - Add assessment properties to datasets and distributions
+/// - Serialize graphs back to Turtle format
 pub struct Graph(Store);
 
 impl Graph {
+    /// Creates a new empty graph store.
+    ///
+    /// # Returns
+    ///
+    /// Returns `Ok(Graph)` if the store is created successfully, or an `Error` if initialization fails.
     pub fn new() -> Result<Self, Error> {
         Ok(Graph(Store::new()?))
     }
 
-    /// Inserts hasAssessment properties into graph.
+    /// Processes an RDF graph by adding assessment properties.
+    ///
+    /// This function:
+    /// 1. Parses the input graph from Turtle format
+    /// 2. Adds `hasAssessment` properties to the dataset and all distributions
+    /// 3. Serializes the enriched graph back to Turtle format
+    ///
+    /// # Arguments
+    ///
+    /// * `graph` - The RDF graph in Turtle format (as a string or any type implementing `ToString`)
+    /// * `dataset_id` - The UUID of the dataset, used to construct the assessment URI
+    ///
+    /// # Returns
+    ///
+    /// Returns `Ok(String)` containing the enriched graph in Turtle format, or an `Error` if:
+    /// - The graph cannot be parsed
+    /// - No dataset is found in the graph
+    /// - Assessment properties cannot be added
+    /// - The graph cannot be serialized
     pub fn process<G: ToString>(&self, graph: G, dataset_id: Uuid) -> Result<String, Error> {
         self.parse(graph)?;
         self.insert_has_assessment_properties(dataset_id)?;
         self.to_string()
     }
 
-    /// Loads graph from string.
+    /// Parses an RDF graph from Turtle format into the store.
+    ///
+    /// # Arguments
+    ///
+    /// * `graph` - The RDF graph in Turtle format (as a string or any type implementing `ToString`)
+    ///
+    /// # Returns
+    ///
+    /// Returns `Ok(())` if parsing succeeds, or an `Error` if the graph format is invalid.
     fn parse<G: ToString>(&self, graph: G) -> Result<(), Error> {
         self.0.load_from_reader(
             RdfParser::from_format(RdfFormat::Turtle)
@@ -43,7 +91,16 @@ impl Graph {
         Ok(())
     }
 
-    /// Retrieves all subjects of type.
+    /// Retrieves all subjects that have the specified RDF type.
+    ///
+    /// # Arguments
+    ///
+    /// * `subject_type` - The RDF type to search for (e.g., `dcat:Dataset` or `dcat:Distribution`)
+    ///
+    /// # Returns
+    ///
+    /// Returns `Ok(Vec<NamedNode>)` containing all subjects of the specified type,
+    /// or an `Error` if the query fails.
     fn subjects_of_type(&self, subject_type: NamedNodeRef) -> Result<Vec<NamedNode>, Error> {
         self.0
             .quads_for_pattern(
@@ -56,7 +113,22 @@ impl Graph {
             .collect()
     }
 
-    /// Inserts hasAssessment properties for dataset and distributions.
+    /// Inserts `hasAssessment` properties for the dataset and all distributions.
+    ///
+    /// For the dataset, uses the provided `dataset_id` to construct the assessment URI.
+    /// For each distribution, generates a deterministic UUID from the distribution's URI
+    /// and uses it to construct the assessment URI.
+    ///
+    /// # Arguments
+    ///
+    /// * `dataset_id` - The UUID of the dataset
+    ///
+    /// # Returns
+    ///
+    /// Returns `Ok(())` if all assessment properties are added successfully, or an `Error` if:
+    /// - No dataset is found in the graph
+    /// - Assessment URIs cannot be created
+    /// - Properties cannot be inserted
     fn insert_has_assessment_properties(&self, dataset_id: Uuid) -> Result<(), Error> {
         let datasets = self.subjects_of_type(dcat::DATASET_CLASS)?;
         let dataset = datasets.first().ok_or("no dataset in graph")?;
@@ -78,7 +150,16 @@ impl Graph {
         Ok(())
     }
 
-    /// Insert hasAssessment property on node.
+    /// Inserts a `hasAssessment` property on a specific node.
+    ///
+    /// # Arguments
+    ///
+    /// * `node` - The RDF node (dataset or distribution) to add the property to
+    /// * `assessment` - The assessment URI to link to
+    ///
+    /// # Returns
+    ///
+    /// Returns `Ok(())` if the property is inserted successfully, or an `Error` if insertion fails.
     fn insert_has_assessment_property(
         &self,
         node: NamedNodeRef,
@@ -94,7 +175,11 @@ impl Graph {
         Ok(())
     }
 
-    /// Dump graph to string.
+    /// Serializes the graph to Turtle format.
+    ///
+    /// # Returns
+    ///
+    /// Returns `Ok(String)` containing the graph in Turtle format, or an `Error` if serialization fails.
     fn to_string(&self) -> Result<String, Error> {
         let mut buff = Vec::new();
         self.0
@@ -104,7 +189,18 @@ impl Graph {
     }
 }
 
-/// Creates deterministic uuid from string hash.
+/// Creates a deterministic UUID from a string using SHA-256 hashing.
+///
+/// The first 16 bytes of the SHA-256 hash are used to generate the UUID.
+/// This ensures the same input string always produces the same UUID.
+///
+/// # Arguments
+///
+/// * `s` - The input string to hash
+///
+/// # Returns
+///
+/// Returns a UUID derived from the hash of the input string.
 fn uuid_from_str(s: String) -> Uuid {
     let mut hasher = Sha256::new();
     hasher.update(s);
@@ -115,7 +211,17 @@ fn uuid_from_str(s: String) -> Uuid {
     uuid::Uuid::from_u128(u128::from_le_bytes(bytes))
 }
 
-// Attempts to extract quad subject as named node.
+/// Attempts to extract the subject of a quad as a named node.
+///
+/// # Arguments
+///
+/// * `result` - The result from a quad query
+///
+/// # Returns
+///
+/// Returns `Ok(NamedNode)` if the subject is a named node, or an `Error` if:
+/// - The quad result is an error
+/// - The subject is not a named node (e.g., it's a blank node)
 fn named_quad_subject(result: Result<Quad, StorageError>) -> Result<NamedNode, Error> {
     match result?.subject {
         Subject::NamedNode(node) => Ok(node),

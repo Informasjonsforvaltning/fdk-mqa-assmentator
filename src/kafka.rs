@@ -1,3 +1,11 @@
+//! Kafka consumer and producer functionality.
+//!
+//! This module handles:
+//! - Creating and configuring Kafka consumers and producers
+//! - Message consumption and processing
+//! - Avro encoding/decoding with Schema Registry
+//! - Producing enriched MQA dataset events
+
 use std::{
     env, time::{Duration, Instant}
 };
@@ -29,15 +37,45 @@ use crate::{
 };
 
 lazy_static! {
+    /// Kafka broker addresses.
+    ///
+    /// Read from the `BROKERS` environment variable, defaults to `localhost:9092`.
     pub static ref BROKERS: String = env::var("BROKERS").unwrap_or("localhost:9092".to_string());
+
+    /// Schema Registry URL(s).
+    ///
+    /// Read from the `SCHEMA_REGISTRY` environment variable, defaults to `http://localhost:8081`.
+    /// Multiple URLs can be specified as a comma-separated list.
     pub static ref SCHEMA_REGISTRY: String =
         env::var("SCHEMA_REGISTRY").unwrap_or("http://localhost:8081".to_string());
+
+    /// Input Kafka topic for dataset events.
+    ///
+    /// Read from the `INPUT_TOPIC` environment variable, defaults to `dataset-events`.
     pub static ref INPUT_TOPIC: String =
         env::var("INPUT_TOPIC").unwrap_or("dataset-events".to_string());
+
+    /// Output Kafka topic for MQA dataset events.
+    ///
+    /// Read from the `OUTPUT_TOPIC` environment variable, defaults to `mqa-dataset-events`.
     pub static ref OUTPUT_TOPIC: String =
         env::var("OUTPUT_TOPIC").unwrap_or("mqa-dataset-events".to_string());
 }
 
+/// Creates Schema Registry settings from environment configuration.
+///
+/// Supports multiple Schema Registry URLs as a comma-separated list.
+/// The first URL is used as the primary, with additional URLs as fallbacks.
+///
+/// # Returns
+///
+/// Returns `Ok(SrSettings)` if successful, or an `Error` if configuration fails.
+///
+/// # Example
+///
+/// Environment variables:
+/// - `SCHEMA_REGISTRY=http://localhost:8081` (single URL)
+/// - `SCHEMA_REGISTRY=http://sr1:8081,http://sr2:8081` (multiple URLs)
 pub fn create_sr_settings() -> Result<SrSettings, Error> {
     let mut schema_registry_urls = SCHEMA_REGISTRY.split(",");
 
@@ -53,6 +91,17 @@ pub fn create_sr_settings() -> Result<SrSettings, Error> {
     Ok(sr_settings)
 }
 
+/// Creates and configures a Kafka stream consumer.
+///
+/// The consumer is configured to:
+/// - Use the consumer group `fdk-mqa-assmentator`
+/// - Subscribe to the input topic
+/// - Auto-commit offsets
+/// - Start from the beginning if no offset is stored
+///
+/// # Returns
+///
+/// Returns `Ok(StreamConsumer)` if successful, or a `KafkaError` if configuration fails.
 pub fn create_consumer() -> Result<StreamConsumer, KafkaError> {
     let consumer: StreamConsumer = ClientConfig::new()
         .set("group.id", "fdk-mqa-assmentator")
@@ -69,6 +118,16 @@ pub fn create_consumer() -> Result<StreamConsumer, KafkaError> {
     Ok(consumer)
 }
 
+/// Creates and configures a Kafka future producer.
+///
+/// The producer is configured to:
+/// - Use Snappy compression
+/// - Set message timeout to 5 seconds
+/// - Limit message size to 2 MiB
+///
+/// # Returns
+///
+/// Returns `Ok(FutureProducer)` if successful, or a `KafkaError` if configuration fails.
 pub fn create_producer() -> Result<FutureProducer, KafkaError> {
     ClientConfig::new()
         .set("bootstrap.servers", BROKERS.clone())
@@ -78,6 +137,23 @@ pub fn create_producer() -> Result<FutureProducer, KafkaError> {
         .create()
 }
 
+/// Runs an asynchronous Kafka message processor.
+///
+/// This function creates a consumer and producer, then continuously:
+/// 1. Receives messages from the input topic
+/// 2. Decodes Avro messages using the Schema Registry
+/// 3. Processes dataset events and enriches RDF graphs
+/// 4. Encodes and produces MQA dataset events to the output topic
+///
+/// # Arguments
+///
+/// * `worker_id` - Unique identifier for this worker instance (for logging)
+/// * `sr_settings` - Schema Registry settings for Avro encoding/decoding
+///
+/// # Returns
+///
+/// Returns `Ok(())` if the processor runs successfully, or an `Error` if initialization fails.
+/// This function runs indefinitely until an error occurs.
 pub async fn run_async_processor(worker_id: usize, sr_settings: SrSettings) -> Result<(), Error> {
     tracing::info!(worker_id, "starting worker");
 
@@ -113,6 +189,22 @@ pub async fn run_async_processor(worker_id: usize, sr_settings: SrSettings) -> R
     }
 }
 
+/// Receives and processes a single Kafka message.
+///
+/// This function handles the message processing lifecycle:
+/// - Measures processing time
+/// - Calls `handle_message` to process the message
+/// - Updates metrics based on success/failure
+/// - Stores the consumer offset on success
+///
+/// # Arguments
+///
+/// * `consumer` - Kafka consumer for storing offsets
+/// * `producer` - Kafka producer for sending messages
+/// * `decoder` - Avro decoder for deserializing messages
+/// * `encoder` - Avro encoder for serializing messages
+/// * `graph_store` - RDF graph store for processing
+/// * `message` - The Kafka message to process
 async fn receive_message(
     consumer: &StreamConsumer,
     producer: &FutureProducer,
@@ -149,6 +241,26 @@ async fn receive_message(
     };
 }
 
+/// Handles a single Kafka message.
+///
+/// This function:
+/// 1. Decodes the Avro message
+/// 2. Processes dataset events by enriching RDF graphs
+/// 3. Produces MQA dataset events to the output topic
+///
+/// # Arguments
+///
+/// * `producer` - Kafka producer for sending messages
+/// * `decoder` - Avro decoder for deserializing messages
+/// * `encoder` - Avro encoder for serializing messages
+/// * `graph_store` - RDF graph store for processing
+/// * `message` - The Kafka message to handle
+///
+/// # Returns
+///
+/// Returns `Ok(true)` if the message was skipped (e.g., unknown event type),
+/// `Ok(false)` if the message was successfully processed and produced,
+/// or an `Error` if processing fails.
 pub async fn handle_message(
     producer: &FutureProducer,
     decoder: &mut AvroDecoder<'_>,
@@ -210,6 +322,22 @@ pub async fn handle_message(
     }
 }
 
+/// Decodes an Avro message from a Kafka message payload.
+///
+/// Attempts to identify the event type from the Avro schema namespace and name,
+/// and deserializes it into the appropriate `InputEvent` variant.
+///
+/// # Arguments
+///
+/// * `decoder` - Avro decoder for deserializing
+/// * `message` - The Kafka message containing the Avro payload
+///
+/// # Returns
+///
+/// Returns `Ok(InputEvent)` if decoding succeeds, or an `Error` if:
+/// - The message cannot be decoded
+/// - The event type cannot be identified
+/// - Deserialization fails
 async fn decode_message(
     decoder: &mut AvroDecoder<'_>,
     message: &BorrowedMessage<'_>,
@@ -236,6 +364,24 @@ async fn decode_message(
     }
 }
 
+/// Handles a dataset event by processing the RDF graph.
+///
+/// For `DatasetHarvested` events, this function:
+/// 1. Parses the dataset ID from the event
+/// 2. Processes the RDF graph to add assessment properties
+/// 3. Returns an MQA dataset event with the enriched graph
+///
+/// Other event types (`DatasetReasoned`, `DatasetRemoved`) are skipped.
+///
+/// # Arguments
+///
+/// * `graph_store` - RDF graph store for processing
+/// * `event` - The dataset event to process
+///
+/// # Returns
+///
+/// Returns `Ok(Some(MqaDatasetEvent))` for processed events,
+/// `Ok(None)` for skipped events, or an `Error` if processing fails.
 async fn handle_dataset_event(
     graph_store: &Graph,
     event: DatasetEvent,
