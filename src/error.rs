@@ -1,8 +1,22 @@
+//! Error types for the FDK MQA Assmentator service.
+//!
+//! This module provides a unified error type that wraps errors from various
+//! dependencies used throughout the application.
+
 use std::string;
 
 use oxigraph::{model, store};
 use thiserror::Error;
 
+/// Unified error type for the application.
+///
+/// This enum aggregates errors from various sources:
+/// - I/O operations
+/// - RDF graph storage and parsing (Oxigraph)
+/// - Kafka operations
+/// - Avro serialization/deserialization
+/// - Schema Registry operations
+/// - Generic string errors
 #[derive(Error, Debug)]
 pub enum Error {
     #[error(transparent)]

@@ -1,3 +1,9 @@
+//! Main entry point for the FDK MQA Assmentator service.
+//!
+//! This binary starts:
+//! - An HTTP server for health checks and metrics (port 8080)
+//! - Multiple Kafka worker threads for processing messages
+
 extern crate fdk_mqa_assmentator;
 
 use actix_web::{get, App, HttpServer, Responder};
@@ -14,16 +20,26 @@ use futures::{
     FutureExt,
 };
 
+/// Health check endpoint.
+///
+/// Returns "pong" to indicate the service is running.
 #[get("/ping")]
 async fn ping() -> impl Responder {
     "pong"
 }
 
+/// Readiness check endpoint.
+///
+/// Returns "ok" to indicate the service is ready to receive traffic.
 #[get("/ready")]
 async fn ready() -> impl Responder {
     "ok"
 }
 
+/// Metrics endpoint.
+///
+/// Returns Prometheus-formatted metrics for scraping.
+/// Returns an empty string if metrics cannot be gathered.
 #[get("/metrics")]
 async fn metrics() -> impl Responder {
     match get_metrics() {
@@ -35,6 +51,17 @@ async fn metrics() -> impl Responder {
     }
 }
 
+/// Main entry point.
+///
+/// Initializes the service by:
+/// 1. Setting up JSON logging with tracing
+/// 2. Registering Prometheus metrics
+/// 3. Creating Schema Registry settings
+/// 4. Registering Avro schemas
+/// 5. Starting an HTTP server for health checks and metrics
+/// 6. Starting 4 Kafka worker threads for message processing
+///
+/// The service runs until an error occurs or it is terminated.
 #[tokio::main]
 async fn main() {
     tracing_subscriber::fmt()
