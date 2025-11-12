@@ -14,7 +14,7 @@ use crate::{
 use lazy_static::lazy_static;
 use oxigraph::{
     io::{RdfFormat, RdfParser},
-    model::{GraphNameRef, NamedNode, NamedNodeRef, Quad, Subject},
+    model::{GraphNameRef, NamedNode, NamedNodeRef, NamedOrBlankNode, Quad},
     store::{StorageError, Store},
 };
 use sha2::{Digest, Sha256};
@@ -224,7 +224,7 @@ fn uuid_from_str(s: String) -> Uuid {
 /// - The subject is not a named node (e.g., it's a blank node)
 fn named_quad_subject(result: Result<Quad, StorageError>) -> Result<NamedNode, Error> {
     match result?.subject {
-        Subject::NamedNode(node) => Ok(node),
+        NamedOrBlankNode::NamedNode(node) => Ok(node),
         _ => Err("unable to get named quad subject".into()),
     }
 }
