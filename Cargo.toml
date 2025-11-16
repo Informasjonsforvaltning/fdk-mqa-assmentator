@@ -10,7 +10,7 @@ futures = "0.3"
 lazy_static = "1.5.0"
 oxigraph = "0.5.2"
 prometheus = "0.14.0"
-rdkafka = "0.37.0"
+rdkafka = "0.38.0"
 schema_registry_converter = { version = "4.4.0", features = ["avro", "futures", "rustls_tls"], default-features=false }
 serde = "1.0.219"
 serde_derive = "1.0.219"
