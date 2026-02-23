@@ -38,6 +38,9 @@ pub enum DatasetEventType {
 /// Dataset event from the input topic.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct DatasetEvent {
+    #[serde(rename = "harvestRunId")]
+    pub harvest_run_id: String,
+    pub uri: String,
     #[serde(rename = "type")]
     pub event_type: DatasetEventType,
     #[serde(rename = "fdkId")]
