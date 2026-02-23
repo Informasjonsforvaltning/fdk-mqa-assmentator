@@ -1,6 +1,6 @@
 use fdk_mqa_assmentator::{
     kafka::{INPUT_TOPIC, OUTPUT_TOPIC},
-    schemas::{DatasetEvent, DatasetEventType},
+    schemas::{DatasetEvent, DatasetEventType, MqaDatasetEvent},
 };
 use kafka_utils::{process_single_message, TestConsumer, TestProducer};
 use sophia_api::term::SimpleTerm;
@@ -37,10 +37,12 @@ async fn named_dataset() {
 
 async fn assert_transformation(fdk_id: &str, input: &str, expected: &str) {
     let input_message = DatasetEvent {
+        harvest_run_id: "test-harvest-run-1".to_string(),
+        uri: "https://dataset.foo".to_string(),
         event_type: DatasetEventType::DatasetHarvested,
-        timestamp: 1647698566000,
         fdk_id: uuid::Uuid::parse_str(fdk_id).unwrap().to_string(),
         graph: input.to_string(),
+        timestamp: 1647698566000,
     };
 
     // Start async assmentator process
@@ -58,9 +60,9 @@ async fn assert_transformation(fdk_id: &str, input: &str, expected: &str) {
     // Wait for assmentator to process message and assert result is ok
     processor.await.unwrap();
 
-    // Consume message produced by assmentator
+    // Consume message produced by assmentator (MQA output schema, not input DatasetEvent)
     let message = consumer.recv().await;
-    let event = apache_avro::from_value::<DatasetEvent>(&message).unwrap();
+    let event = apache_avro::from_value::<MqaDatasetEvent>(&message).unwrap();
 
     let expected_graph: Vec<[SimpleTerm; 3]> = parse_str(expected).collect_triples().unwrap();
     let result_graph: Vec<[SimpleTerm; 3]> = parse_str(&event.graph).collect_triples().unwrap();
