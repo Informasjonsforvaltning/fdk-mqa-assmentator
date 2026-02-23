@@ -52,7 +52,7 @@ pub struct DatasetEvent {
 /// MQA (Metadata Quality Assessment) dataset event for the output topic.
 ///
 /// Contains the enriched RDF graph with assessment properties.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct MqaDatasetEvent {
     #[serde(rename = "type")]
     pub event_type: MqaDatasetEventType,
@@ -65,7 +65,7 @@ pub struct MqaDatasetEvent {
 /// Type of MQA dataset event.
 ///
 /// Currently only `DatasetHarvested` events are produced.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub enum MqaDatasetEventType {
     #[serde(rename = "DATASET_HARVESTED")]
     DatasetHarvested,
