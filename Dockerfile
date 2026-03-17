@@ -12,8 +12,9 @@ RUN cargo build --release
 FROM debian:trixie-slim
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates \
     curl \
-    && rm -rf /var/lib/apt/lists/*     
+    && rm -rf /var/lib/apt/lists/*
 
 ENV TZ=Europe/Oslo
 RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
