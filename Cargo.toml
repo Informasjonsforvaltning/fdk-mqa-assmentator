@@ -16,7 +16,7 @@ serde = "1.0.228"
 serde_derive = "1.0.228"
 sha2 = "0.11.0"
 thiserror = "2.0.18"
-tokio = { version = "1.50.0", features = ["full"] }
+tokio = { version = "1.51.0", features = ["full"] }
 tracing = "0.1.44"
 tracing-subscriber =  { version = "0.3.23", features = ["json", "env-filter", "tracing-log"] }
 uuid = "1.23.0"
