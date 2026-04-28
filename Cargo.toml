@@ -8,7 +8,7 @@ actix-web = "4.13.0"
 apache-avro = "0.21.0"
 futures = "0.3.32"
 lazy_static = "1.5.0"
-oxigraph = "0.5.6"
+oxigraph = "0.5.7"
 prometheus = "0.14.0"
 rdkafka = "0.39.0"
 schema_registry_converter = { version = "4.8.0", features = ["avro", "futures", "rustls_tls"], default-features=false }
@@ -16,10 +16,10 @@ serde = "1.0.228"
 serde_derive = "1.0.228"
 sha2 = "0.11.0"
 thiserror = "2.0.18"
-tokio = { version = "1.50.0", features = ["full"] }
+tokio = { version = "1.52.1", features = ["full"] }
 tracing = "0.1.44"
 tracing-subscriber =  { version = "0.3.23", features = ["json", "env-filter", "tracing-log"] }
-uuid = "1.23.0"
+uuid = "1.23.1"
 
 [dev-dependencies]
 sophia_api= "0.9.0"
