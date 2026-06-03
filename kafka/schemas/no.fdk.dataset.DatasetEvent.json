@@ -37,6 +37,11 @@
             "name": "timestamp",
             "type": "long",
             "logicalType": "timestamp-millis"
+        },
+        {
+            "name": "catalogGraph",
+            "type": ["null", "string"],
+            "default": null
         }
     ]
 }
