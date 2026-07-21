@@ -16,19 +16,42 @@ use rdkafka::{
     ClientConfig, Message,
 };
 use schema_registry_converter::{
-    async_impl::avro::{AvroDecoder, AvroEncoder},
+    async_impl::{
+        avro::{AvroDecoder, AvroEncoder},
+        schema_registry::SrSettings,
+    },
     schema_registry_common::SubjectNameStrategy,
 };
 use serde::Serialize;
 
-pub async fn process_single_message(config: &Config) -> Result<bool, Error> {
-    let sr_settings = create_sr_settings(config)?;
-    setup_schemas(&sr_settings).await?;
+/// Shared Kafka test setup with config and Schema Registry settings.
+pub struct TestContext {
+    pub config: Config,
+    sr_settings: SrSettings,
+}
 
-    let producer = create_producer(config)?;
-    let consumer = create_consumer(config)?;
-    let mut encoder = AvroEncoder::new(sr_settings.clone());
-    let mut decoder = AvroDecoder::new(sr_settings);
+impl TestContext {
+    pub fn new() -> Self {
+        let config = Config::from_env();
+        let sr_settings = create_sr_settings(&config).expect("failed to create sr settings");
+        Self {
+            config,
+            sr_settings,
+        }
+    }
+
+    pub fn sr_settings(&self) -> SrSettings {
+        self.sr_settings.clone()
+    }
+}
+
+pub async fn process_single_message(ctx: &TestContext) -> Result<bool, Error> {
+    setup_schemas(&ctx.sr_settings).await?;
+
+    let producer = create_producer(&ctx.config)?;
+    let consumer = create_consumer(&ctx.config)?;
+    let mut encoder = AvroEncoder::new(ctx.sr_settings());
+    let mut decoder = AvroDecoder::new(ctx.sr_settings());
     let graph_store = Graph::new()?;
 
     // Attempt to receive message for 3s before aborting with an error
@@ -44,7 +67,7 @@ pub async fn process_single_message(config: &Config) -> Result<bool, Error> {
         &mut encoder,
         &graph_store,
         &message,
-        config,
+        &ctx.config,
     )
     .await
 }
@@ -56,17 +79,17 @@ pub struct TestProducer<'a> {
 }
 
 impl TestProducer<'_> {
-    pub fn new(config: &Config) -> Self {
+    pub fn new(ctx: &TestContext) -> Self {
         let producer = ClientConfig::new()
-            .set("bootstrap.servers", &config.brokers)
+            .set("bootstrap.servers", &ctx.config.brokers)
             .create::<FutureProducer>()
             .expect("Failed to create Kafka FutureProducer");
 
-        let encoder = AvroEncoder::new(create_sr_settings(config).unwrap());
+        let encoder = AvroEncoder::new(ctx.sr_settings());
         Self {
             producer,
             encoder,
-            topic: config.input_topic.clone(),
+            topic: ctx.config.input_topic.clone(),
         }
     }
 
@@ -94,10 +117,10 @@ pub struct TestConsumer<'a> {
 }
 
 impl TestConsumer<'_> {
-    pub fn new(config: &Config) -> Self {
+    pub fn new(ctx: &TestContext) -> Self {
         let consumer = ClientConfig::new()
             .set("group.id", "fdk-mqa-assmentator-test")
-            .set("bootstrap.servers", &config.brokers)
+            .set("bootstrap.servers", &ctx.config.brokers)
             .set("auto.offset.reset", "beginning")
             .set("security.protocol", "plaintext")
             .set("debug", "all")
@@ -106,10 +129,10 @@ impl TestConsumer<'_> {
             .expect("Failed to create Kafka StreamConsumer");
 
         consumer
-            .subscribe(&[&config.output_topic])
+            .subscribe(&[&ctx.config.output_topic])
             .expect("Failed to subscribe to topic");
 
-        let decoder = AvroDecoder::new(create_sr_settings(config).unwrap());
+        let decoder = AvroDecoder::new(ctx.sr_settings());
         Self { consumer, decoder }
     }
 

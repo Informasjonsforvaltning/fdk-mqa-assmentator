@@ -229,7 +229,10 @@ fn named_quad_subject(result: Result<Quad, StorageError>) -> Result<NamedNode, E
 #[cfg(test)]
 mod tests {
     use super::Graph;
-    use crate::config::Config;
+    use crate::{
+        config::Config,
+        fixtures::{self, DATASET_GRAPH_WITH_QUALITY_MEASUREMENTS},
+    };
     use sophia_api::source::TripleSource;
     use sophia_api::term::SimpleTerm;
     use sophia_isomorphism::isomorphic_graphs;
@@ -237,49 +240,21 @@ mod tests {
 
     #[test]
     fn replace() {
-        let g = Graph::new().unwrap();
-        let graph = r#"
-        <https://dataset.foo> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/ns/dcat#Dataset> .
-        <https://dataset.foo> <http://www.w3.org/ns/dcat#distribution> <https://distribution.foo> .
-        <https://dataset.foo> <http://www.w3.org/ns/dcat#distribution> <https://distribution.bar> .
-        <https://distribution.foo> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/ns/dcat#Distribution> .
-        <https://distribution.bar> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/ns/dcat#Distribution> .
-        <https://dataset.foo> <http://www.w3.org/ns/dqv#hasQualityMeasurement> _:a .
-        <https://distribution.foo> <http://www.w3.org/ns/dqv#hasQualityMeasurement> _:b .
-        <https://distribution.foo> <http://www.w3.org/ns/dqv#hasQualityMeasurement> _:c .
-        <https://distribution.bar> <http://www.w3.org/ns/dqv#hasQualityMeasurement> _:d .
-        _:a <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/ns/dqv#QualityMeasurement> .
-        _:b <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/ns/dqv#QualityMeasurement> .
-        _:c <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/ns/dqv#QualityMeasurement> .
-        _:d <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/ns/dqv#QualityMeasurement> .
-        "#;
-        let uuid = uuid::Uuid::parse_str("0123bf37-5867-4c90-bc74-5a8c4e118572").unwrap();
         let config = Config::from_env();
-        let replaced = g.process(graph, uuid, &config).unwrap();
+        let fdk_id = "0123bf37-5867-4c90-bc74-5a8c4e118572";
+        let uuid = uuid::Uuid::parse_str(fdk_id).unwrap();
+        let graph = Graph::new().unwrap();
+        let result = graph
+            .process(DATASET_GRAPH_WITH_QUALITY_MEASUREMENTS, uuid, &config)
+            .unwrap();
 
-        let result_graph: Vec<[SimpleTerm; 3]> = parse_str(&replaced).collect_triples().unwrap();
-
-        let expected_graph: Vec<[SimpleTerm; 3]> = parse_str(
-            r#"
-                <https://dataset.foo> <https://data.norge.no/vocabulary/dcatno-mqa#hasAssessment> <http://localhost:8080/assessments/datasets/0123bf37-5867-4c90-bc74-5a8c4e118572> .
-                <https://distribution.foo> <https://data.norge.no/vocabulary/dcatno-mqa#hasAssessment> <http://localhost:8080/assessments/distributions/83f6bed5-11ed-413b-0f62-23c05b20009f> .
-                <https://distribution.bar> <https://data.norge.no/vocabulary/dcatno-mqa#hasAssessment> <http://localhost:8080/assessments/distributions/4107c895-36c0-edba-ed6d-34d9b72a95d8> .
-
-                <https://dataset.foo> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/ns/dcat#Dataset> .
-                <https://dataset.foo> <http://www.w3.org/ns/dcat#distribution> <https://distribution.foo> .
-                <https://dataset.foo> <http://www.w3.org/ns/dcat#distribution> <https://distribution.bar> .
-                <https://distribution.foo> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/ns/dcat#Distribution> .
-                <https://distribution.bar> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/ns/dcat#Distribution> .
-                <https://dataset.foo> <http://www.w3.org/ns/dqv#hasQualityMeasurement> _:a .
-                <https://distribution.foo> <http://www.w3.org/ns/dqv#hasQualityMeasurement> _:b .
-                <https://distribution.foo> <http://www.w3.org/ns/dqv#hasQualityMeasurement> _:c .
-                <https://distribution.bar> <http://www.w3.org/ns/dqv#hasQualityMeasurement> _:d .
-                _:a <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/ns/dqv#QualityMeasurement> .
-                _:b <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/ns/dqv#QualityMeasurement> .
-                _:c <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/ns/dqv#QualityMeasurement> .
-                _:d <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/ns/dqv#QualityMeasurement> .
-                "#
-        ).collect_triples().unwrap();
+        let result_graph: Vec<[SimpleTerm; 3]> = parse_str(&result).collect_triples().unwrap();
+        let expected = fixtures::expected_enriched_graph(
+            fdk_id,
+            &config.mqa_uri_base,
+            DATASET_GRAPH_WITH_QUALITY_MEASUREMENTS,
+        );
+        let expected_graph: Vec<[SimpleTerm; 3]> = parse_str(&expected).collect_triples().unwrap();
 
         assert!(isomorphic_graphs(&expected_graph, &result_graph).unwrap())
     }
