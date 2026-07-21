@@ -1,17 +1,13 @@
 //! Main entry point for the FDK MQA Assmentator service.
 //!
 //! This binary starts:
-//! - An HTTP server for health checks and metrics (port 8080)
+//! - An HTTP server for health checks and metrics
 //! - Multiple Kafka worker threads for processing messages
-
-extern crate fdk_mqa_assmentator;
 
 use actix_web::{get, App, HttpServer, Responder};
 use fdk_mqa_assmentator::{
-    kafka::{
-        create_sr_settings, run_async_processor, BROKERS, INPUT_TOPIC, OUTPUT_TOPIC,
-        SCHEMA_REGISTRY,
-    },
+    config::Config,
+    kafka::{create_sr_settings, run_async_processor},
     metrics::{get_metrics, register_metrics},
     schemas::setup_schemas,
 };
@@ -56,10 +52,11 @@ async fn metrics() -> impl Responder {
 /// Initializes the service by:
 /// 1. Setting up JSON logging with tracing
 /// 2. Registering Prometheus metrics
-/// 3. Creating Schema Registry settings
-/// 4. Registering Avro schemas
-/// 5. Starting an HTTP server for health checks and metrics
-/// 6. Starting 4 Kafka worker threads for message processing
+/// 3. Loading configuration from environment variables
+/// 4. Creating Schema Registry settings
+/// 5. Registering Avro schemas
+/// 6. Starting an HTTP server for health checks and metrics
+/// 7. Starting Kafka worker threads for message processing
 ///
 /// The service runs until an error occurs or it is terminated.
 #[tokio::main]
@@ -70,20 +67,24 @@ async fn main() {
         .with_target(false)
         .with_current_span(false)
         .init();
-    
+
     tracing::debug!("Tracing initialized");
 
     register_metrics();
 
+    let config = Config::from_env();
+
     tracing::info!(
-        brokers = BROKERS.to_string(),
-        schema_registry = SCHEMA_REGISTRY.to_string(),
-        input_topic = INPUT_TOPIC.to_string(),
-        output_topic = OUTPUT_TOPIC.to_string(),
+        brokers = config.brokers,
+        schema_registry = config.schema_registry,
+        input_topic = config.input_topic,
+        output_topic = config.output_topic,
+        worker_count = config.worker_count,
+        http_port = config.http_port,
         "starting service"
     );
 
-    let sr_settings = create_sr_settings().unwrap_or_else(|e| {
+    let sr_settings = create_sr_settings(&config).unwrap_or_else(|e| {
         tracing::error!(error = e.to_string(), "sr settings creation error");
         std::process::exit(1);
     });
@@ -93,9 +94,10 @@ async fn main() {
         std::process::exit(1);
     });
 
+    let http_port = config.http_port;
     let http_server = tokio::spawn(
         HttpServer::new(|| App::new().service(ping).service(ready).service(metrics))
-            .bind(("0.0.0.0", 8080))
+            .bind(("0.0.0.0", http_port))
             .unwrap_or_else(|e| {
                 tracing::error!(error = e.to_string(), "metrics server error");
                 std::process::exit(1);
@@ -104,8 +106,14 @@ async fn main() {
             .map(|f| f.map_err(|e| e.into())),
     );
 
-    (0..4)
-        .map(|i| tokio::spawn(run_async_processor(i, sr_settings.clone())))
+    (0..config.worker_count)
+        .map(|i| {
+            tokio::spawn(run_async_processor(
+                i,
+                config.clone(),
+                sr_settings.clone(),
+            ))
+        })
         .chain(std::iter::once(http_server))
         .collect::<FuturesUnordered<_>>()
         .for_each(|result| async {

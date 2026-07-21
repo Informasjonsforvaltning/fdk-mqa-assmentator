@@ -1,10 +1,10 @@
 use fdk_mqa_assmentator::{
-    kafka::{INPUT_TOPIC, OUTPUT_TOPIC},
+    config::Config,
     schemas::{DatasetEvent, DatasetEventType, MqaDatasetEvent},
 };
 use kafka_utils::{process_single_message, TestConsumer, TestProducer};
-use sophia_api::term::SimpleTerm;
 use sophia_api::source::TripleSource;
+use sophia_api::term::SimpleTerm;
 use sophia_isomorphism::isomorphic_graphs;
 use sophia_turtle::parser::turtle::parse_str;
 
@@ -32,10 +32,13 @@ async fn named_dataset() {
             <https://distribution.foo> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/ns/dcat#Distribution> .
             <https://distribution.bar> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/ns/dcat#Distribution> .
         "#,
-    ).await;
+    )
+    .await;
 }
 
 async fn assert_transformation(fdk_id: &str, input: &str, expected: &str) {
+    let config = Config::from_env();
+
     let input_message = DatasetEvent {
         harvest_run_id: "test-harvest-run-1".to_string(),
         uri: "https://dataset.foo".to_string(),
@@ -46,14 +49,14 @@ async fn assert_transformation(fdk_id: &str, input: &str, expected: &str) {
     };
 
     // Start async assmentator process
-    let processor = process_single_message();
+    let processor = process_single_message(&config);
 
     // Create consumer on assmentator output topic, and read all current messages
-    let mut consumer = TestConsumer::new(&OUTPUT_TOPIC);
+    let mut consumer = TestConsumer::new(&config);
     consumer.read_all().await;
 
     // Produce message to assmentator input topic
-    TestProducer::new(&INPUT_TOPIC)
+    TestProducer::new(&config)
         .produce(&input_message, "no.fdk.dataset.DatasetEvent")
         .await;
 

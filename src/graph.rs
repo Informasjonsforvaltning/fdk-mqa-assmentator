@@ -5,13 +5,11 @@
 //! - Enrich graphs with `hasAssessment` properties for datasets and distributions
 //! - Serialize graphs back to Turtle format
 
-use std::env;
-
 use crate::{
+    config::Config,
     error::Error,
     vocab::{dcat, dcat_mqa, rdf_syntax},
 };
-use lazy_static::lazy_static;
 use oxigraph::{
     io::{RdfFormat, RdfParser},
     model::{GraphNameRef, NamedNode, NamedNodeRef, NamedOrBlankNode, Quad},
@@ -19,15 +17,6 @@ use oxigraph::{
 };
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
-
-lazy_static! {
-    /// Base URI for MQA assessment endpoints.
-    ///
-    /// Read from the `MQA_URI_BASE` environment variable, defaults to `http://localhost:8080`.
-    /// Used to construct assessment URIs for datasets and distributions.
-    pub static ref MQA_URI_BASE: String =
-        env::var("MQA_URI_BASE").unwrap_or("http://localhost:8080".to_string());
-}
 
 /// RDF graph store wrapper for processing and enriching graphs.
 ///
@@ -66,9 +55,14 @@ impl Graph {
     /// - No dataset is found in the graph
     /// - Assessment properties cannot be added
     /// - The graph cannot be serialized
-    pub fn process<G: ToString>(&self, graph: G, dataset_id: Uuid) -> Result<String, Error> {
+    pub fn process<G: ToString>(
+        &self,
+        graph: G,
+        dataset_id: Uuid,
+        config: &Config,
+    ) -> Result<String, Error> {
         self.parse(graph)?;
-        self.insert_has_assessment_properties(dataset_id)?;
+        self.insert_has_assessment_properties(dataset_id, config)?;
         self.to_string()
     }
 
@@ -129,20 +123,23 @@ impl Graph {
     /// - No dataset is found in the graph
     /// - Assessment URIs cannot be created
     /// - Properties cannot be inserted
-    fn insert_has_assessment_properties(&self, dataset_id: Uuid) -> Result<(), Error> {
+    fn insert_has_assessment_properties(
+        &self,
+        dataset_id: Uuid,
+        config: &Config,
+    ) -> Result<(), Error> {
         let datasets = self.subjects_of_type(dcat::DATASET_CLASS)?;
         let dataset = datasets.first().ok_or("no dataset in graph")?;
         let dataset_assessment = NamedNode::new(format!(
             "{}/assessments/datasets/{}",
-            MQA_URI_BASE.clone(),
-            dataset_id.clone()
+            config.mqa_uri_base, dataset_id
         ))?;
         self.insert_has_assessment_property(dataset.as_ref(), dataset_assessment)?;
 
         for distribution in self.subjects_of_type(dcat::DISTRIBUTION_CLASS)? {
             let distribution_assessment = NamedNode::new(format!(
                 "{}/assessments/distributions/{}",
-                MQA_URI_BASE.clone(),
+                config.mqa_uri_base,
                 uuid_from_str(distribution.as_str().to_string())
             ))?;
             self.insert_has_assessment_property(distribution.as_ref(), distribution_assessment)?;
@@ -232,6 +229,7 @@ fn named_quad_subject(result: Result<Quad, StorageError>) -> Result<NamedNode, E
 #[cfg(test)]
 mod tests {
     use super::Graph;
+    use crate::config::Config;
     use sophia_api::source::TripleSource;
     use sophia_api::term::SimpleTerm;
     use sophia_isomorphism::isomorphic_graphs;
@@ -256,7 +254,8 @@ mod tests {
         _:d <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://www.w3.org/ns/dqv#QualityMeasurement> .
         "#;
         let uuid = uuid::Uuid::parse_str("0123bf37-5867-4c90-bc74-5a8c4e118572").unwrap();
-        let replaced = g.process(graph, uuid).unwrap();
+        let config = Config::from_env();
+        let replaced = g.process(graph, uuid, &config).unwrap();
 
         let result_graph: Vec<[SimpleTerm; 3]> = parse_str(&replaced).collect_triples().unwrap();
 
