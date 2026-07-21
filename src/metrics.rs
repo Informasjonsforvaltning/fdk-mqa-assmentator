@@ -91,9 +91,7 @@ pub fn get_metrics() -> Result<String, Error> {
     let mut buffer = Vec::new();
 
     prometheus::TextEncoder::new()
-        .encode(&REGISTRY.gather(), &mut buffer)
-        .map_err(|e| e.to_string())?;
+        .encode(&REGISTRY.gather(), &mut buffer)?;
 
-    let metrics = String::from_utf8(buffer).map_err(|e| e.to_string())?;
-    Ok(metrics)
+    Ok(String::from_utf8(buffer)?)
 }
