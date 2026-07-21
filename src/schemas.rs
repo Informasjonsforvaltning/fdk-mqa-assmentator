@@ -14,6 +14,13 @@ use serde_derive::Deserialize;
 
 use crate::error::Error;
 
+/// Schema Registry subject for MQA dataset events.
+pub const MQA_DATASET_EVENT_SUBJECT: &str = "no.fdk.mqa.DatasetEvent";
+
+/// Avro schema for MQA dataset events, loaded from `kafka/schemas/`.
+pub const MQA_DATASET_EVENT_SCHEMA: &str =
+    include_str!("../kafka/schemas/no.fdk.mqa.DatasetEvent.json");
+
 /// Represents an input event from Kafka.
 ///
 /// Can be either a known `DatasetEvent` or an unknown event type.
@@ -36,22 +43,27 @@ pub enum DatasetEventType {
 }
 
 /// Dataset event from the input topic.
+///
+/// Matches `kafka/schemas/no.fdk.dataset.DatasetEvent.json`.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct DatasetEvent {
-    #[serde(rename = "harvestRunId")]
-    pub harvest_run_id: String,
-    pub uri: String,
     #[serde(rename = "type")]
     pub event_type: DatasetEventType,
+    #[serde(rename = "harvestRunId", default)]
+    pub harvest_run_id: Option<String>,
+    #[serde(default)]
+    pub uri: Option<String>,
     #[serde(rename = "fdkId")]
     pub fdk_id: String,
     pub graph: String,
     pub timestamp: i64,
+    #[serde(rename = "catalogGraph", default)]
+    pub catalog_graph: Option<String>,
 }
 
 /// MQA (Metadata Quality Assessment) dataset event for the output topic.
 ///
-/// Contains the enriched RDF graph with assessment properties.
+/// Matches `kafka/schemas/no.fdk.mqa.DatasetEvent.json`.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct MqaDatasetEvent {
     #[serde(rename = "type")]
@@ -86,25 +98,8 @@ pub enum MqaDatasetEventType {
 pub async fn setup_schemas(sr_settings: &SrSettings) -> Result<(), Error> {
     register_schema(
         sr_settings,
-        "no.fdk.mqa.DatasetEvent",
-        r#"{
-            "name": "DatasetEvent",
-            "namespace": "no.fdk.mqa",
-            "type": "record",
-            "fields": [
-                {
-                    "name": "type",
-                    "type": {
-                        "type": "enum",
-                        "name": "DatasetEventType",
-                        "symbols": ["DATASET_HARVESTED"]
-                    }
-                },
-                {"name": "fdkId", "type": "string"},
-                {"name": "graph", "type": "string"},
-                {"name": "timestamp", "type": "long", "logicalType": "timestamp-millis"}
-            ]
-        }"#,
+        MQA_DATASET_EVENT_SUBJECT,
+        MQA_DATASET_EVENT_SCHEMA,
     )
     .await?;
     Ok(())
@@ -142,6 +137,6 @@ pub async fn register_schema(
     )
     .await?;
 
-    tracing::info!(id = schema.id, name, "schema succesfully registered");
+    tracing::info!(id = schema.id, name, "schema successfully registered");
     Ok(())
 }
