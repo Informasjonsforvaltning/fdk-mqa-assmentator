@@ -31,7 +31,8 @@ use crate::{
     error::Error,
     graph::Graph,
     metrics::{PROCESSED_MESSAGES, PROCESSING_TIME, PRODUCED_MESSAGES},
-    schemas::{DatasetEvent, DatasetEventType, InputEvent, MqaDatasetEvent, MqaDatasetEventType},
+    schemas::{DatasetEvent, DatasetEventType, InputEvent, MqaDatasetEvent, MqaDatasetEventType,
+        MQA_DATASET_EVENT_SUBJECT},
 };
 
 /// Creates Schema Registry settings from configuration.
@@ -287,7 +288,7 @@ async fn produce_mqa_event(
     let encoded = encoder
         .encode_struct(
             event,
-            &SubjectNameStrategy::RecordNameStrategy("no.fdk.mqa.DatasetEvent".to_string()),
+            &SubjectNameStrategy::RecordNameStrategy(MQA_DATASET_EVENT_SUBJECT.to_string()),
         )
         .await?;
 

@@ -55,11 +55,12 @@ pub fn expected_enriched_graph(fdk_id: &str, mqa_uri_base: &str, input: &str) ->
 /// Builds a harvested dataset event for tests.
 pub fn sample_harvested_dataset_event(fdk_id: &str, graph: &str) -> DatasetEvent {
     DatasetEvent {
-        harvest_run_id: "test-harvest-run-1".to_string(),
-        uri: "https://dataset.foo".to_string(),
         event_type: DatasetEventType::DatasetHarvested,
+        harvest_run_id: Some("test-harvest-run-1".to_string()),
+        uri: Some("https://dataset.foo".to_string()),
         fdk_id: fdk_id.to_string(),
         graph: graph.trim().to_string(),
         timestamp: 1647698566000,
+        catalog_graph: None,
     }
 }
