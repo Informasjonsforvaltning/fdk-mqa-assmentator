@@ -13,6 +13,7 @@
 //!
 //! ## Modules
 //!
+//! - [`config`]: Application configuration from environment variables
 //! - [`error`]: Error types used throughout the application
 //! - [`graph`]: RDF graph processing and enrichment
 //! - [`kafka`]: Kafka consumer and producer setup and message handling
@@ -20,6 +21,7 @@
 //! - [`schemas`]: Avro schema definitions and registration
 //! - `vocab`: RDF vocabulary constants
 
+pub mod config;
 pub mod error;
 pub mod graph;
 pub mod kafka;

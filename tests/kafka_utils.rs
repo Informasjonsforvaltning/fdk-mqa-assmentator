@@ -2,9 +2,10 @@ use std::time::Duration;
 
 use apache_avro::types::Value;
 use fdk_mqa_assmentator::{
+    config::Config,
     error::Error,
     graph::Graph,
-    kafka::{create_consumer, create_producer, create_sr_settings, handle_message, BROKERS},
+    kafka::{create_consumer, create_producer, create_sr_settings, handle_message},
     schemas::setup_schemas,
 };
 use futures::StreamExt;
@@ -20,14 +21,15 @@ use schema_registry_converter::{
 };
 use serde::Serialize;
 
-pub async fn process_single_message() -> Result<bool, Error> {
-    setup_schemas(&create_sr_settings().unwrap()).await.unwrap();
+pub async fn process_single_message(config: &Config) -> Result<bool, Error> {
+    let sr_settings = create_sr_settings(config)?;
+    setup_schemas(&sr_settings).await?;
 
-    let producer = create_producer().unwrap();
-    let consumer = create_consumer().unwrap();
-    let mut encoder = AvroEncoder::new(create_sr_settings().unwrap());
-    let mut decoder = AvroDecoder::new(create_sr_settings().unwrap());
-    let graph_store = Graph::new().unwrap();
+    let producer = create_producer(config)?;
+    let consumer = create_consumer(config)?;
+    let mut encoder = AvroEncoder::new(sr_settings.clone());
+    let mut decoder = AvroDecoder::new(sr_settings);
+    let graph_store = Graph::new()?;
 
     // Attempt to receive message for 3s before aborting with an error
     let message = tokio::time::timeout(Duration::from_millis(3000), consumer.stream().next())
@@ -42,6 +44,7 @@ pub async fn process_single_message() -> Result<bool, Error> {
         &mut encoder,
         &graph_store,
         &message,
+        config,
     )
     .await
 }
@@ -49,21 +52,21 @@ pub async fn process_single_message() -> Result<bool, Error> {
 pub struct TestProducer<'a> {
     producer: FutureProducer,
     encoder: AvroEncoder<'a>,
-    topic: &'static str,
+    topic: String,
 }
 
 impl TestProducer<'_> {
-    pub fn new(topic: &'static str) -> Self {
+    pub fn new(config: &Config) -> Self {
         let producer = ClientConfig::new()
-            .set("bootstrap.servers", BROKERS.clone())
+            .set("bootstrap.servers", &config.brokers)
             .create::<FutureProducer>()
             .expect("Failed to create Kafka FutureProducer");
 
-        let encoder = AvroEncoder::new(create_sr_settings().unwrap());
+        let encoder = AvroEncoder::new(create_sr_settings(config).unwrap());
         Self {
             producer,
             encoder,
-            topic,
+            topic: config.input_topic.clone(),
         }
     }
 
@@ -76,7 +79,8 @@ impl TestProducer<'_> {
             )
             .await
             .unwrap();
-        let record: FutureRecord<String, Vec<u8>> = FutureRecord::to(self.topic).payload(&encoded);
+        let record: FutureRecord<String, Vec<u8>> =
+            FutureRecord::to(&self.topic).payload(&encoded);
         self.producer
             .send(record, Duration::from_secs(0))
             .await
@@ -90,10 +94,10 @@ pub struct TestConsumer<'a> {
 }
 
 impl TestConsumer<'_> {
-    pub fn new(topic: &'static str) -> Self {
+    pub fn new(config: &Config) -> Self {
         let consumer = ClientConfig::new()
             .set("group.id", "fdk-mqa-assmentator-test")
-            .set("bootstrap.servers", BROKERS.clone())
+            .set("bootstrap.servers", &config.brokers)
             .set("auto.offset.reset", "beginning")
             .set("security.protocol", "plaintext")
             .set("debug", "all")
@@ -102,10 +106,10 @@ impl TestConsumer<'_> {
             .expect("Failed to create Kafka StreamConsumer");
 
         consumer
-            .subscribe(&[topic])
+            .subscribe(&[&config.output_topic])
             .expect("Failed to subscribe to topic");
 
-        let decoder = AvroDecoder::new(create_sr_settings().unwrap());
+        let decoder = AvroDecoder::new(create_sr_settings(config).unwrap());
         Self { consumer, decoder }
     }
 

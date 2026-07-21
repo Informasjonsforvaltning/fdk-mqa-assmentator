@@ -6,12 +6,9 @@
 //! - Avro encoding/decoding with Schema Registry
 //! - Producing enriched MQA dataset events
 
-use std::{
-    env, time::{Duration, Instant}
-};
+use std::time::{Duration, Instant};
 
 use apache_avro::schema::Name;
-use lazy_static::lazy_static;
 use rdkafka::{
     consumer::{Consumer, StreamConsumer},
     error::KafkaError,
@@ -30,39 +27,14 @@ use schema_registry_converter::{
 use tracing::{Instrument, Level};
 
 use crate::{
+    config::Config,
     error::Error,
     graph::Graph,
     metrics::{PROCESSED_MESSAGES, PROCESSING_TIME, PRODUCED_MESSAGES},
     schemas::{DatasetEvent, DatasetEventType, InputEvent, MqaDatasetEvent, MqaDatasetEventType},
 };
 
-lazy_static! {
-    /// Kafka broker addresses.
-    ///
-    /// Read from the `BROKERS` environment variable, defaults to `localhost:9092`.
-    pub static ref BROKERS: String = env::var("BROKERS").unwrap_or("localhost:9092".to_string());
-
-    /// Schema Registry URL(s).
-    ///
-    /// Read from the `SCHEMA_REGISTRY` environment variable, defaults to `http://localhost:8081`.
-    /// Multiple URLs can be specified as a comma-separated list.
-    pub static ref SCHEMA_REGISTRY: String =
-        env::var("SCHEMA_REGISTRY").unwrap_or("http://localhost:8081".to_string());
-
-    /// Input Kafka topic for dataset events.
-    ///
-    /// Read from the `INPUT_TOPIC` environment variable, defaults to `dataset-events`.
-    pub static ref INPUT_TOPIC: String =
-        env::var("INPUT_TOPIC").unwrap_or("dataset-events".to_string());
-
-    /// Output Kafka topic for MQA dataset events.
-    ///
-    /// Read from the `OUTPUT_TOPIC` environment variable, defaults to `mqa-dataset-events`.
-    pub static ref OUTPUT_TOPIC: String =
-        env::var("OUTPUT_TOPIC").unwrap_or("mqa-dataset-events".to_string());
-}
-
-/// Creates Schema Registry settings from environment configuration.
+/// Creates Schema Registry settings from configuration.
 ///
 /// Supports multiple Schema Registry URLs as a comma-separated list.
 /// The first URL is used as the primary, with additional URLs as fallbacks.
@@ -76,8 +48,8 @@ lazy_static! {
 /// Environment variables:
 /// - `SCHEMA_REGISTRY=http://localhost:8081` (single URL)
 /// - `SCHEMA_REGISTRY=http://sr1:8081,http://sr2:8081` (multiple URLs)
-pub fn create_sr_settings() -> Result<SrSettings, Error> {
-    let mut schema_registry_urls = SCHEMA_REGISTRY.split(",");
+pub fn create_sr_settings(config: &Config) -> Result<SrSettings, Error> {
+    let mut schema_registry_urls = config.schema_registry.split(",");
 
     let mut sr_settings_builder =
         SrSettings::new_builder(schema_registry_urls.next().unwrap_or_default().to_string());
@@ -102,10 +74,10 @@ pub fn create_sr_settings() -> Result<SrSettings, Error> {
 /// # Returns
 ///
 /// Returns `Ok(StreamConsumer)` if successful, or a `KafkaError` if configuration fails.
-pub fn create_consumer() -> Result<StreamConsumer, KafkaError> {
+pub fn create_consumer(config: &Config) -> Result<StreamConsumer, KafkaError> {
     let consumer: StreamConsumer = ClientConfig::new()
         .set("group.id", "fdk-mqa-assmentator")
-        .set("bootstrap.servers", BROKERS.clone())
+        .set("bootstrap.servers", &config.brokers)
         .set("enable.partition.eof", "false")
         .set("session.timeout.ms", "6000")
         .set("enable.auto.commit", "true")
@@ -114,7 +86,7 @@ pub fn create_consumer() -> Result<StreamConsumer, KafkaError> {
         .set("api.version.request", "false")
         .set("security.protocol", "plaintext")
         .create()?;
-    consumer.subscribe(&[&INPUT_TOPIC])?;
+    consumer.subscribe(&[&config.input_topic])?;
     Ok(consumer)
 }
 
@@ -128,9 +100,9 @@ pub fn create_consumer() -> Result<StreamConsumer, KafkaError> {
 /// # Returns
 ///
 /// Returns `Ok(FutureProducer)` if successful, or a `KafkaError` if configuration fails.
-pub fn create_producer() -> Result<FutureProducer, KafkaError> {
+pub fn create_producer(config: &Config) -> Result<FutureProducer, KafkaError> {
     ClientConfig::new()
-        .set("bootstrap.servers", BROKERS.clone())
+        .set("bootstrap.servers", &config.brokers)
         .set("message.timeout.ms", "5000")
         .set("compression.type", "snappy")
         .set("message.max.bytes", "2097152") // 2MiB
@@ -154,11 +126,15 @@ pub fn create_producer() -> Result<FutureProducer, KafkaError> {
 ///
 /// Returns `Ok(())` if the processor runs successfully, or an `Error` if initialization fails.
 /// This function runs indefinitely until an error occurs.
-pub async fn run_async_processor(worker_id: usize, sr_settings: SrSettings) -> Result<(), Error> {
+pub async fn run_async_processor(
+    worker_id: usize,
+    config: Config,
+    sr_settings: SrSettings,
+) -> Result<(), Error> {
     tracing::info!(worker_id, "starting worker");
 
-    let consumer = create_consumer()?;
-    let producer = create_producer()?;
+    let consumer = create_consumer(&config)?;
+    let producer = create_producer(&config)?;
     let mut encoder = AvroEncoder::new(sr_settings.clone());
     let mut decoder = AvroDecoder::new(sr_settings);
 
@@ -183,6 +159,7 @@ pub async fn run_async_processor(worker_id: usize, sr_settings: SrSettings) -> R
             &mut encoder,
             &graph_store,
             &message,
+            &config,
         )
         .instrument(span)
         .await;
@@ -212,9 +189,11 @@ async fn receive_message(
     encoder: &mut AvroEncoder<'_>,
     graph_store: &Graph,
     message: &BorrowedMessage<'_>,
+    config: &Config,
 ) {
     let start_time = Instant::now();
-    let result = handle_message(producer, decoder, encoder, graph_store, message).await;
+    let result =
+        handle_message(producer, decoder, encoder, graph_store, message, config).await;
     let elapsed_millis = start_time.elapsed().as_millis();
     match result {
         Ok(skipped) => {
@@ -267,6 +246,7 @@ pub async fn handle_message(
     encoder: &mut AvroEncoder<'_>,
     graph_store: &Graph,
     message: &BorrowedMessage<'_>,
+    config: &Config,
 ) -> Result<bool, Error> {
     match decode_message(decoder, message).await? {
         InputEvent::DatasetEvent(event) => {
@@ -278,9 +258,8 @@ pub async fn handle_message(
             );
 
             let key = event.fdk_id.clone();
-            if let Some(mqa_dataset_event) = handle_dataset_event(graph_store, event)
-                .instrument(span)
-                .await?
+            if let Some(mqa_dataset_event) =
+                handle_dataset_event(graph_store, event, config).instrument(span).await?
             {
                 let encoded = encoder
                     .encode_struct(
@@ -291,8 +270,9 @@ pub async fn handle_message(
                     )
                     .await?;
 
-                let record: FutureRecord<String, Vec<u8>> =
-                    FutureRecord::to(&OUTPUT_TOPIC).key(&key).payload(&encoded);
+                let record: FutureRecord<String, Vec<u8>> = FutureRecord::to(&config.output_topic)
+                    .key(&key)
+                    .payload(&encoded);
                 let result = producer
                     .send(record, Duration::from_secs(0))
                     .await
@@ -385,11 +365,12 @@ async fn decode_message(
 async fn handle_dataset_event(
     graph_store: &Graph,
     event: DatasetEvent,
+    config: &Config,
 ) -> Result<Option<MqaDatasetEvent>, Error> {
     match event.event_type {
         DatasetEventType::DatasetHarvested => {
             let fdk_id = uuid::Uuid::parse_str(&event.fdk_id).map_err(|e| e.to_string())?;
-            let graph = graph_store.process(event.graph, fdk_id)?;
+            let graph = graph_store.process(event.graph, fdk_id, config)?;
             Ok(Some(MqaDatasetEvent {
                 event_type: MqaDatasetEventType::DatasetHarvested,
                 fdk_id: event.fdk_id,
