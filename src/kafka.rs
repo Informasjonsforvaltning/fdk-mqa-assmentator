@@ -258,46 +258,57 @@ pub async fn handle_message(
             );
 
             let key = event.fdk_id.clone();
-            if let Some(mqa_dataset_event) =
-                handle_dataset_event(graph_store, event, config).instrument(span).await?
+            match handle_dataset_event(graph_store, event, config)
+                .instrument(span)
+                .await?
             {
-                let encoded = encoder
-                    .encode_struct(
-                        mqa_dataset_event,
-                        &SubjectNameStrategy::RecordNameStrategy(
-                            "no.fdk.mqa.DatasetEvent".to_string(),
-                        ),
-                    )
-                    .await?;
-
-                let record: FutureRecord<String, Vec<u8>> = FutureRecord::to(&config.output_topic)
-                    .key(&key)
-                    .payload(&encoded);
-                let result = producer
-                    .send(record, Duration::from_secs(0))
-                    .await
-                    .map_err(|e| e.0);
-                
-                return match result {
-                    Ok(_) => {
-                        tracing::info!(fdk_id = key, "message produced successfully");
-                        PRODUCED_MESSAGES.with_label_values(&["success"]).inc();
-                        Ok(false)
-                    }
-                    Err(e) => {
-                        tracing::error!(fdk_id = key, error = e.to_string(), "failed to produce message");
-                        PRODUCED_MESSAGES.with_label_values(&["error"]).inc();
-                        Err(e.into())
-                    }
-                };
-            } else {
-                Ok(true)
+                Some(mqa_event) => {
+                    produce_mqa_event(producer, encoder, config, mqa_event, &key).await?;
+                    Ok(false)
+                }
+                None => Ok(true),
             }
-            
         }
         InputEvent::Unknown { namespace, name } => {
             tracing::warn!(namespace, name, "skipping unknown event");
-            return Ok(true);
+            Ok(true)
+        }
+    }
+}
+
+/// Encodes and produces an MQA dataset event to the output topic.
+async fn produce_mqa_event(
+    producer: &FutureProducer,
+    encoder: &mut AvroEncoder<'_>,
+    config: &Config,
+    event: MqaDatasetEvent,
+    key: &String,
+) -> Result<(), Error> {
+    let encoded = encoder
+        .encode_struct(
+            event,
+            &SubjectNameStrategy::RecordNameStrategy("no.fdk.mqa.DatasetEvent".to_string()),
+        )
+        .await?;
+
+    let record: FutureRecord<String, Vec<u8>> = FutureRecord::to(&config.output_topic)
+        .key(key)
+        .payload(&encoded);
+
+    match producer
+        .send(record, Duration::from_secs(0))
+        .await
+        .map_err(|e| e.0)
+    {
+        Ok(_) => {
+            tracing::info!(fdk_id = key, "message produced successfully");
+            PRODUCED_MESSAGES.with_label_values(&["success"]).inc();
+            Ok(())
+        }
+        Err(e) => {
+            tracing::error!(fdk_id = key, error = e.to_string(), "failed to produce message");
+            PRODUCED_MESSAGES.with_label_values(&["error"]).inc();
+            Err(e.into())
         }
     }
 }
