@@ -129,7 +129,7 @@ impl Graph {
         config: &Config,
     ) -> Result<(), Error> {
         let datasets = self.subjects_of_type(dcat::DATASET_CLASS)?;
-        let dataset = datasets.first().ok_or("no dataset in graph")?;
+        let dataset = datasets.first().ok_or(Error::NoDatasetInGraph)?;
         let dataset_assessment = NamedNode::new(format!(
             "{}/assessments/datasets/{}",
             config.mqa_uri_base, dataset_id
@@ -222,7 +222,7 @@ fn uuid_from_str(s: String) -> Uuid {
 fn named_quad_subject(result: Result<Quad, StorageError>) -> Result<NamedNode, Error> {
     match result?.subject {
         NamedOrBlankNode::NamedNode(node) => Ok(node),
-        _ => Err("unable to get named quad subject".into()),
+        _ => Err(Error::BlankQuadSubject),
     }
 }
 

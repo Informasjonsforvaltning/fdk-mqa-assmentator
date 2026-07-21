@@ -340,7 +340,7 @@ async fn decode_message(
             };
             Ok(event)
         }
-        _ => Err("unable to identify event without namespace and name".into()),
+        _ => Err(Error::MissingSchemaIdentity),
     }
 }
 
@@ -369,7 +369,7 @@ async fn handle_dataset_event(
 ) -> Result<Option<MqaDatasetEvent>, Error> {
     match event.event_type {
         DatasetEventType::DatasetHarvested => {
-            let fdk_id = uuid::Uuid::parse_str(&event.fdk_id).map_err(|e| e.to_string())?;
+            let fdk_id = uuid::Uuid::parse_str(&event.fdk_id)?;
             let graph = graph_store.process(event.graph, fdk_id, config)?;
             Ok(Some(MqaDatasetEvent {
                 event_type: MqaDatasetEventType::DatasetHarvested,
@@ -380,6 +380,6 @@ async fn handle_dataset_event(
         }
         DatasetEventType::DatasetReasoned => Ok(None),
         DatasetEventType::DatasetRemoved => Ok(None),
-        DatasetEventType::Unknown => Err(format!("unknown DatasetEventType").into()),
+        DatasetEventType::Unknown => Err(Error::UnknownEventType),
     }
 }

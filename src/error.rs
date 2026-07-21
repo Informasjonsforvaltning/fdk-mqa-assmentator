@@ -16,7 +16,7 @@ use thiserror::Error;
 /// - Kafka operations
 /// - Avro serialization/deserialization
 /// - Schema Registry operations
-/// - Generic string errors
+/// - Domain-specific validation failures
 #[derive(Error, Debug)]
 pub enum Error {
     #[error(transparent)]
@@ -37,18 +37,16 @@ pub enum Error {
     AvroError(#[from] apache_avro::Error),
     #[error(transparent)]
     SRCError(#[from] schema_registry_converter::error::SRCError),
-    #[error("{0}")]
-    String(String),
-}
-
-impl From<&str> for Error {
-    fn from(e: &str) -> Self {
-        Self::String(e.to_string())
-    }
-}
-
-impl From<String> for Error {
-    fn from(e: String) -> Self {
-        Self::String(e)
-    }
+    #[error(transparent)]
+    PrometheusError(#[from] prometheus::Error),
+    #[error(transparent)]
+    InvalidFdkId(#[from] uuid::Error),
+    #[error("no dataset in graph")]
+    NoDatasetInGraph,
+    #[error("quad subject is not a named node")]
+    BlankQuadSubject,
+    #[error("unable to identify event without schema namespace and name")]
+    MissingSchemaIdentity,
+    #[error("unknown DatasetEventType")]
+    UnknownEventType,
 }
