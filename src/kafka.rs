@@ -76,17 +76,17 @@ pub fn create_sr_settings(config: &Config) -> Result<SrSettings, Error> {
 ///
 /// Returns `Ok(StreamConsumer)` if successful, or a `KafkaError` if configuration fails.
 pub fn create_consumer(config: &Config) -> Result<StreamConsumer, KafkaError> {
-    let consumer: StreamConsumer = ClientConfig::new()
+    let mut client_config = ClientConfig::new();
+    client_config
         .set("group.id", "fdk-mqa-assmentator")
         .set("bootstrap.servers", &config.brokers)
         .set("enable.partition.eof", "false")
         .set("session.timeout.ms", "6000")
         .set("enable.auto.commit", "true")
         .set("enable.auto.offset.store", "false")
-        .set("auto.offset.reset", "beginning")
-        .set("api.version.request", "false")
-        .set("security.protocol", "plaintext")
-        .create()?;
+        .set("auto.offset.reset", "beginning");
+    set_security(&mut client_config, config);
+    let consumer: StreamConsumer = client_config.create()?;
     consumer.subscribe(&[&config.input_topic])?;
     Ok(consumer)
 }
@@ -102,12 +102,29 @@ pub fn create_consumer(config: &Config) -> Result<StreamConsumer, KafkaError> {
 ///
 /// Returns `Ok(FutureProducer)` if successful, or a `KafkaError` if configuration fails.
 pub fn create_producer(config: &Config) -> Result<FutureProducer, KafkaError> {
-    ClientConfig::new()
+    let mut client_config = ClientConfig::new();
+    client_config
         .set("bootstrap.servers", &config.brokers)
         .set("message.timeout.ms", "5000")
         .set("compression.type", "snappy")
-        .set("message.max.bytes", "2097152") // 2MiB
-        .create()
+        .set("message.max.bytes", "2097152"); // 2MiB
+    set_security(&mut client_config, config);
+    client_config.create()
+}
+
+/// Applies the broker security settings from configuration.
+///
+/// SASL credentials are only set when the security protocol requires them,
+/// so local development and tests keep using plaintext.
+fn set_security(client_config: &mut ClientConfig, config: &Config) {
+    let security_protocol = config.kafka_security_protocol.to_lowercase();
+    client_config.set("security.protocol", &security_protocol);
+    if security_protocol.starts_with("sasl") {
+        client_config
+            .set("sasl.mechanism", &config.kafka_sasl_mechanism)
+            .set("sasl.username", &config.kafka_sasl_username)
+            .set("sasl.password", &config.kafka_sasl_password);
+    }
 }
 
 /// Runs an asynchronous Kafka message processor.
