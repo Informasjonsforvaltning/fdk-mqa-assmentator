@@ -11,6 +11,14 @@ pub struct Config {
     pub mqa_uri_base: String,
     /// Kafka broker addresses.
     pub brokers: String,
+    /// Kafka security protocol (`plaintext` or `sasl_plaintext`).
+    pub kafka_security_protocol: String,
+    /// SASL mechanism used when the security protocol is SASL.
+    pub kafka_sasl_mechanism: String,
+    /// SASL username used when the security protocol is SASL.
+    pub kafka_sasl_username: String,
+    /// SASL password used when the security protocol is SASL.
+    pub kafka_sasl_password: String,
     /// Schema Registry URL(s), comma-separated for fallbacks.
     pub schema_registry: String,
     /// Input Kafka topic for dataset events.
@@ -30,6 +38,12 @@ impl Config {
             mqa_uri_base: env::var("MQA_URI_BASE")
                 .unwrap_or_else(|_| "http://localhost:8080".to_string()),
             brokers: env::var("BROKERS").unwrap_or_else(|_| "localhost:9092".to_string()),
+            kafka_security_protocol: env::var("KAFKA_SECURITY_PROTOCOL")
+                .unwrap_or_else(|_| "plaintext".to_string()),
+            kafka_sasl_mechanism: env::var("KAFKA_SASL_MECHANISM")
+                .unwrap_or_else(|_| "SCRAM-SHA-512".to_string()),
+            kafka_sasl_username: env::var("KAFKA_SASL_USERNAME").unwrap_or_default(),
+            kafka_sasl_password: env::var("KAFKA_SASL_PASSWORD").unwrap_or_default(),
             schema_registry: env::var("SCHEMA_REGISTRY")
                 .unwrap_or_else(|_| "http://localhost:8081".to_string()),
             input_topic: env::var("INPUT_TOPIC")

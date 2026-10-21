@@ -40,8 +40,28 @@ spec:
             - name: BROKERS
               valueFrom:
                 secretKeyRef:
-                  name: fdk-metadata-quality
+                  name: kafka-user-fdk-mqa-assmentator
                   key: BROKERS
+            - name: KAFKA_SECURITY_PROTOCOL
+              valueFrom:
+                secretKeyRef:
+                  name: kafka-user-fdk-mqa-assmentator
+                  key: SECURITY_PROTOCOL
+            - name: KAFKA_SASL_MECHANISM
+              valueFrom:
+                secretKeyRef:
+                  name: kafka-user-fdk-mqa-assmentator
+                  key: SASL_MECHANISM
+            - name: KAFKA_SASL_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: kafka-user-fdk-mqa-assmentator
+                  key: USERNAME
+            - name: KAFKA_SASL_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: kafka-user-fdk-mqa-assmentator
+                  key: PASSWORD
           resources:
             requests:
               memory: "500Mi"
