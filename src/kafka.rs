@@ -30,6 +30,7 @@ use crate::{
     config::Config,
     error::Error,
     graph::Graph,
+    kafka_context::ThrottledContext,
     metrics::{PROCESSED_MESSAGES, PROCESSING_TIME, PRODUCED_MESSAGES},
     schemas::{DatasetEvent, DatasetEventType, InputEvent, MqaDatasetEvent, MqaDatasetEventType,
         MQA_DATASET_EVENT_SUBJECT},
@@ -64,6 +65,11 @@ pub fn create_sr_settings(config: &Config) -> Result<SrSettings, Error> {
     Ok(sr_settings)
 }
 
+/// Consumer type used throughout the service.
+pub type KafkaConsumer = StreamConsumer<ThrottledContext>;
+/// Producer type used throughout the service.
+pub type KafkaProducer = FutureProducer<ThrottledContext>;
+
 /// Creates and configures a Kafka stream consumer.
 ///
 /// The consumer is configured to:
@@ -75,7 +81,7 @@ pub fn create_sr_settings(config: &Config) -> Result<SrSettings, Error> {
 /// # Returns
 ///
 /// Returns `Ok(StreamConsumer)` if successful, or a `KafkaError` if configuration fails.
-pub fn create_consumer(config: &Config) -> Result<StreamConsumer, KafkaError> {
+pub fn create_consumer(config: &Config) -> Result<KafkaConsumer, KafkaError> {
     let mut client_config = ClientConfig::new();
     client_config
         .set("group.id", "fdk-mqa-assmentator")
@@ -86,7 +92,7 @@ pub fn create_consumer(config: &Config) -> Result<StreamConsumer, KafkaError> {
         .set("enable.auto.offset.store", "false")
         .set("auto.offset.reset", "beginning");
     set_security(&mut client_config, config);
-    let consumer: StreamConsumer = client_config.create()?;
+    let consumer: KafkaConsumer = client_config.create_with_context(ThrottledContext)?;
     consumer.subscribe(&[&config.input_topic])?;
     Ok(consumer)
 }
@@ -101,7 +107,7 @@ pub fn create_consumer(config: &Config) -> Result<StreamConsumer, KafkaError> {
 /// # Returns
 ///
 /// Returns `Ok(FutureProducer)` if successful, or a `KafkaError` if configuration fails.
-pub fn create_producer(config: &Config) -> Result<FutureProducer, KafkaError> {
+pub fn create_producer(config: &Config) -> Result<KafkaProducer, KafkaError> {
     let mut client_config = ClientConfig::new();
     client_config
         .set("bootstrap.servers", &config.brokers)
@@ -109,7 +115,7 @@ pub fn create_producer(config: &Config) -> Result<FutureProducer, KafkaError> {
         .set("compression.type", "snappy")
         .set("message.max.bytes", "2097152"); // 2MiB
     set_security(&mut client_config, config);
-    client_config.create()
+    client_config.create_with_context(ThrottledContext)
 }
 
 /// Applies the broker security settings from configuration.
@@ -157,10 +163,16 @@ pub async fn run_async_processor(
     let mut decoder = AvroDecoder::new(sr_settings);
 
     tracing::info!(worker_id, "listening for messages");
+    let mut last_consumer_error_log: Option<Instant> = None;
     loop {
+        let message = match consumer.recv().await {
+            Ok(message) => message,
+            Err(e) => {
+                handle_consumer_error(worker_id, &e, &mut last_consumer_error_log)?;
+                continue;
+            }
+        };
         let graph_store = Graph::new()?;
-
-        let message = consumer.recv().await?;
         let span = tracing::span!(
             Level::INFO,
             "message",
@@ -201,8 +213,8 @@ pub async fn run_async_processor(
 /// * `graph_store` - RDF graph store for processing
 /// * `message` - The Kafka message to process
 async fn receive_message(
-    consumer: &StreamConsumer,
-    producer: &FutureProducer,
+    consumer: &KafkaConsumer,
+    producer: &KafkaProducer,
     decoder: &mut AvroDecoder<'_>,
     encoder: &mut AvroEncoder<'_>,
     graph_store: &Graph,
@@ -259,7 +271,7 @@ async fn receive_message(
 /// `Ok(false)` if the message was successfully processed and produced,
 /// or an `Error` if processing fails.
 pub async fn handle_message(
-    producer: &FutureProducer,
+    producer: &KafkaProducer,
     decoder: &mut AvroDecoder<'_>,
     encoder: &mut AvroEncoder<'_>,
     graph_store: &Graph,
@@ -296,7 +308,7 @@ pub async fn handle_message(
 
 /// Encodes and produces an MQA dataset event to the output topic.
 async fn produce_mqa_event(
-    producer: &FutureProducer,
+    producer: &KafkaProducer,
     encoder: &mut AvroEncoder<'_>,
     config: &Config,
     event: MqaDatasetEvent,
@@ -410,6 +422,71 @@ async fn handle_dataset_event(
         DatasetEventType::DatasetReasoned => Ok(None),
         DatasetEventType::DatasetRemoved => Ok(None),
         DatasetEventType::Unknown => Err(Error::UnknownEventType),
+    }
+}
+
+/// How often a worker repeats the warning while the broker stays unreachable.
+const CONSUMER_ERROR_LOG_INTERVAL: Duration = Duration::from_secs(10);
+
+/// Decides what to do with an error from the consumer stream.
+///
+/// librdkafka reports broker outages, transport failures and failed (re)connects
+/// as error events and reconnects on its own, so the worker keeps consuming and
+/// logs at most one warning per interval. Only librdkafka's fatal errors end the
+/// worker.
+fn handle_consumer_error(
+    worker_id: usize,
+    error: &KafkaError,
+    last_logged: &mut Option<Instant>,
+) -> Result<(), Error> {
+    if let KafkaError::MessageConsumptionFatal(_) = error {
+        return Err(error.clone().into());
+    }
+    if last_logged.is_none_or(|at| at.elapsed() >= CONSUMER_ERROR_LOG_INTERVAL) {
+        tracing::warn!(
+            worker_id,
+            error = %error,
+            "consumer error, retrying"
+        );
+        *last_logged = Some(Instant::now());
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod consumer_error_tests {
+    use rdkafka::error::{KafkaError, RDKafkaErrorCode};
+
+    use super::handle_consumer_error;
+
+    #[test]
+    fn transport_failure_keeps_the_worker_alive() {
+        let error = KafkaError::MessageConsumption(RDKafkaErrorCode::BrokerTransportFailure);
+        assert!(handle_consumer_error(0, &error, &mut None).is_ok());
+    }
+
+    #[test]
+    fn authentication_error_keeps_the_worker_alive() {
+        let error = KafkaError::MessageConsumption(RDKafkaErrorCode::Authentication);
+        assert!(handle_consumer_error(0, &error, &mut None).is_ok());
+    }
+
+    #[test]
+    fn fatal_error_ends_the_worker() {
+        let error = KafkaError::MessageConsumptionFatal(RDKafkaErrorCode::Fatal);
+        assert!(handle_consumer_error(0, &error, &mut None).is_err());
+    }
+
+    #[test]
+    fn repeated_errors_are_logged_once_per_interval() {
+        let error = KafkaError::MessageConsumption(RDKafkaErrorCode::BrokerTransportFailure);
+        let mut last_logged = None;
+
+        handle_consumer_error(0, &error, &mut last_logged).unwrap();
+        let first = last_logged.expect("the first error is logged");
+        handle_consumer_error(0, &error, &mut last_logged).unwrap();
+
+        assert_eq!(last_logged, Some(first));
     }
 }
 
