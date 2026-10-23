@@ -27,6 +27,8 @@ spec:
           ports:
             - containerPort: 8080
           env:
+            - name: RUST_LOG
+              value: info
             - name: NAMESPACE
               valueFrom:
                 secretKeyRef:

@@ -1,11 +1,11 @@
 //! Application configuration loaded from environment variables.
 
-use std::env;
+use std::{env, fmt};
 
 /// Application configuration.
 ///
 /// Loaded once at startup via [`Config::from_env`] and passed to workers and processing logic.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct Config {
     /// Base URI for MQA assessment endpoints.
     pub mqa_uri_base: String,
@@ -59,5 +59,52 @@ impl Config {
                 .and_then(|s| s.parse().ok())
                 .unwrap_or(8080),
         }
+    }
+}
+
+/// Hand-written so that the SASL password never ends up in logs or panic output.
+impl fmt::Debug for Config {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Config")
+            .field("mqa_uri_base", &self.mqa_uri_base)
+            .field("brokers", &self.brokers)
+            .field("kafka_security_protocol", &self.kafka_security_protocol)
+            .field("kafka_sasl_mechanism", &self.kafka_sasl_mechanism)
+            .field("kafka_sasl_username", &self.kafka_sasl_username)
+            .field("kafka_sasl_password", &"<redacted>")
+            .field("schema_registry", &self.schema_registry)
+            .field("input_topic", &self.input_topic)
+            .field("output_topic", &self.output_topic)
+            .field("worker_count", &self.worker_count)
+            .field("http_port", &self.http_port)
+            .finish()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Config;
+
+    #[test]
+    fn debug_output_redacts_sasl_password() {
+        let config = Config {
+            mqa_uri_base: "http://localhost:8080".to_string(),
+            brokers: "localhost:9092".to_string(),
+            kafka_security_protocol: "sasl_plaintext".to_string(),
+            kafka_sasl_mechanism: "SCRAM-SHA-512".to_string(),
+            kafka_sasl_username: "assmentator".to_string(),
+            kafka_sasl_password: "very-secret-password".to_string(),
+            schema_registry: "http://localhost:8081".to_string(),
+            input_topic: "dataset-events".to_string(),
+            output_topic: "mqa-dataset-events".to_string(),
+            worker_count: 4,
+            http_port: 8080,
+        };
+
+        let debug = format!("{:?}", config);
+
+        assert!(!debug.contains("very-secret-password"));
+        assert!(debug.contains("kafka_sasl_password: \"<redacted>\""));
+        assert!(debug.contains("kafka_sasl_username: \"assmentator\""));
     }
 }

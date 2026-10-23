@@ -412,3 +412,54 @@ async fn handle_dataset_event(
         DatasetEventType::Unknown => Err(Error::UnknownEventType),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use rdkafka::ClientConfig;
+
+    use super::set_security;
+    use crate::config::Config;
+
+    fn config(security_protocol: &str) -> Config {
+        Config {
+            mqa_uri_base: "http://localhost:8080".to_string(),
+            brokers: "localhost:9092".to_string(),
+            kafka_security_protocol: security_protocol.to_string(),
+            kafka_sasl_mechanism: "SCRAM-SHA-512".to_string(),
+            kafka_sasl_username: "assmentator".to_string(),
+            kafka_sasl_password: "secret".to_string(),
+            schema_registry: "http://localhost:8081".to_string(),
+            input_topic: "dataset-events".to_string(),
+            output_topic: "mqa-dataset-events".to_string(),
+            worker_count: 1,
+            http_port: 8080,
+        }
+    }
+
+    #[test]
+    fn plaintext_sets_no_sasl_properties() {
+        let mut client_config = ClientConfig::new();
+
+        set_security(&mut client_config, &config("plaintext"));
+
+        assert_eq!(client_config.get("security.protocol"), Some("plaintext"));
+        assert_eq!(client_config.get("sasl.mechanism"), None);
+        assert_eq!(client_config.get("sasl.username"), None);
+        assert_eq!(client_config.get("sasl.password"), None);
+    }
+
+    #[test]
+    fn sasl_sets_credentials_and_lowercases_protocol() {
+        let mut client_config = ClientConfig::new();
+
+        set_security(&mut client_config, &config("SASL_PLAINTEXT"));
+
+        assert_eq!(
+            client_config.get("security.protocol"),
+            Some("sasl_plaintext")
+        );
+        assert_eq!(client_config.get("sasl.mechanism"), Some("SCRAM-SHA-512"));
+        assert_eq!(client_config.get("sasl.username"), Some("assmentator"));
+        assert_eq!(client_config.get("sasl.password"), Some("secret"));
+    }
+}
