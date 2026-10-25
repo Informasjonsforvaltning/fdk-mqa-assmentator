@@ -227,7 +227,7 @@ async fn receive_message(
     let elapsed_millis = start_time.elapsed().as_millis();
     match result {
         Ok(skipped) => {
-            tracing::info!(elapsed_millis, "message handled successfully");
+            tracing::debug!(elapsed_millis, "message handled successfully");
             if !skipped {
                 PROCESSED_MESSAGES.with_label_values(&["success"]).inc();
                 PROCESSING_TIME.observe(elapsed_millis as f64 / 1000.0);
@@ -331,7 +331,7 @@ async fn produce_mqa_event(
         .map_err(|e| e.0)
     {
         Ok(_) => {
-            tracing::info!(fdk_id = key, "message produced successfully");
+            tracing::debug!(fdk_id = key, "message produced successfully");
             PRODUCED_MESSAGES.with_label_values(&["success"]).inc();
             Ok(())
         }
