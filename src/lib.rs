@@ -26,6 +26,7 @@ pub mod error;
 pub mod fixtures;
 pub mod graph;
 pub mod kafka;
+pub mod kafka_context;
 pub mod metrics;
 pub mod schemas;
 mod vocab;
